@@ -50,9 +50,18 @@ target_include_directories(imgui PUBLIC external/imgui)
 add_library(windowlib STATIC
   external/imgui/examples/imgui_impl_glfw.h
   external/imgui/examples/imgui_impl_glfw.cpp
+  external/imgui/examples/imgui_impl_opengl3.h
+  external/imgui/examples/imgui_impl_opengl3.cpp
+  glad/src/glad.c
 )
 target_link_libraries(windowlib imgui glfw)
-target_include_directories(windowlib PUBLIC external/imgui/examples)
+target_compile_definitions(windowlib PUBLIC
+  IMGUI_IMPL_OPENGL_LOADER_GLAD
+)
+target_include_directories(windowlib PUBLIC
+  external/imgui/examples
+  glad/include
+)
 
 # Main
 add_executable(GpuPathTracer

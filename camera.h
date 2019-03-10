@@ -26,7 +26,7 @@ class CameraController {
   {
   }
   void setWindow(GLFWwindow *window) { mWindow = window; }
-  void setCamera(Camera *camera) { mCamera = camera; }
+  void setCamera(Camera *camera_) { mCamera = camera_; }
   void setEnabled(bool enable) { mEnabled = enable; }
 
   void tick(double time_delta); // Called once each frame.
