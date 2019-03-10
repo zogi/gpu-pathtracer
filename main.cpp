@@ -1,18 +1,10 @@
-#include <memory>
-
-#include <radeon_rays.h>
+#include "common.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
 #define STB_IMPLEMENTATION
 #include <stb_image.h>
-
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-
-#define GLFW_INCLUDE_GLU
-#include <GLFW/glfw3.h>
 
 using RadeonRays::DeviceInfo;
 using RadeonRays::IntersectionApi;

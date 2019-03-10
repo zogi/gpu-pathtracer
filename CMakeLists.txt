@@ -55,5 +55,9 @@ target_link_libraries(windowlib imgui glfw)
 target_include_directories(windowlib PUBLIC external/imgui/examples)
 
 # Main
-add_executable(GpuPathTracer main.cpp)
+add_executable(GpuPathTracer
+  main.cpp
+  camera.h
+  camera.cpp
+)
 target_link_libraries(GpuPathTracer RadeonRays stb tinyobjloader windowlib glm)
