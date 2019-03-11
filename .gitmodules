@@ -1,6 +1,7 @@
 [submodule "external/RadeonRays_SDK"]
 	path = external/RadeonRays_SDK
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/RadeonRays_SDK.git
+	ignore = all
 [submodule "external/tinyobjloader"]
 	path = external/tinyobjloader
 	url = https://github.com/syoyo/tinyobjloader.git
