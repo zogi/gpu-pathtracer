@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.8)
 
 project(GpuPathTracer CXX)
 
+include(cmake/glslang.cmake)
+
 # Radeon Rays
 option(RR_USE_OPENCL "" ON)
 option(RR_USE_VULKAN "" OFF)
@@ -63,10 +65,22 @@ target_include_directories(windowlib PUBLIC
   glad/include
 )
 
+set(GLFW_VULKAN_DIR external/imgui/examples/example_glfw_vulkan)
+add_spirv_shader_lib(imgui_shaders
+  SOURCES
+    ${GLFW_VULKAN_DIR}/glsl_shader.vert
+    ${GLFW_VULKAN_DIR}/glsl_shader.frag
+  OUTPUT
+    shaders/imgui
+)
+add_dependencies(windowlib imgui_shaders)
+
 # Main
 add_executable(GpuPathTracer
   main.cpp
   camera.h
   camera.cpp
 )
-target_link_libraries(GpuPathTracer RadeonRays stb tinyobjloader windowlib glm)
+target_link_libraries(GpuPathTracer
+  RadeonRays stb tinyobjloader windowlib glm
+)
