@@ -166,6 +166,15 @@ int main()
   // Use surface area heuristic for better intersection performance (but slower scene build time).
   intersection_api->SetOption("bvh.builder", "sah");
 
+  // Load test geometry.
+  tinyobj::attrib_t attrib;
+  std::vector<tinyobj::shape_t> shapes;
+  std::vector<tinyobj::material_t> materials;
+  std::string warn;
+  std::string err;
+  const std::string filename = "../models/lucy/lucy.obj";
+  const bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str());
+
   while (!window.shouldClose()) {
     glfwPollEvents();
 
