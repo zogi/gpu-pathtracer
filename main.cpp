@@ -175,6 +175,23 @@ int main()
   const std::string filename = "../models/lucy/lucy.obj";
   const bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str());
 
+  const auto &mesh = shapes[0].mesh;
+
+  std::vector<int> indices;
+  indices.reserve(mesh.indices.size());
+  for (const auto &tinyobj_index : mesh.indices) {
+    indices.push_back(tinyobj_index.vertex_index);
+  }
+
+  std::vector<int> numFaceVertices(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
+
+  RadeonRays::Shape *shape = intersection_api->CreateMesh(
+    attrib.vertices.data(), 3, 3 * sizeof(float), indices.data(), 0, numFaceVertices.data(),
+    numFaceVertices.size());
+
+  intersection_api->AttachShape(shape);
+  intersection_api->Commit();
+
   while (!window.shouldClose()) {
     glfwPollEvents();
 
