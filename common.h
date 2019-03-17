@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+
 #include <array>
 #include <memory>
 #include <vector>
@@ -16,13 +20,13 @@
 
 #include <stb_image.h>
 
-#include <glad/glad.h>
-
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
+#include <imgui_impl_vulkan.h>
 
-#define GLFW_INCLUDE_GLU
+#define GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <vulkan/vulkan.h>
 
 #include <radeon_rays.h>

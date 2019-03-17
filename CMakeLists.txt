@@ -4,11 +4,21 @@ project(GpuPathTracer CXX)
 
 include(cmake/glslang.cmake)
 
+# Vulkan
+find_package(Vulkan REQUIRED)
+
+if (WIN32)
+  # Hack to make Anvil find vulkan-1.lib
+  add_library(vulkan-1.lib INTERFACE)
+  set_target_properties(vulkan-1.lib PROPERTIES
+    INTERFACE_LINK_LIBRARIES "${VULKAN_LIBRARY}")
+endif()
+
 # Radeon Rays
-option(RR_USE_OPENCL "" ON)
-option(RR_USE_VULKAN "" OFF)
+option(RR_USE_VULKAN "" ON)
+option(RR_USE_OPENCL "" OFF)
 option(RR_USE_EMBREE "" OFF)
-option(RR_EMBED_KERNELS "" ON)
+option(RR_EMBED_KERNELS "" OFF)
 option(RR_ALLOW_CPU_DEVICES "" OFF)
 option(RR_NO_TESTS "" ON)
 option(RR_ENABLE_STATIC "" ON)
@@ -52,11 +62,11 @@ target_include_directories(imgui PUBLIC external/imgui)
 add_library(windowlib STATIC
   external/imgui/examples/imgui_impl_glfw.h
   external/imgui/examples/imgui_impl_glfw.cpp
-  external/imgui/examples/imgui_impl_opengl3.h
-  external/imgui/examples/imgui_impl_opengl3.cpp
+  external/imgui/examples/imgui_impl_vulkan.h
+  external/imgui/examples/imgui_impl_vulkan.cpp
   glad/src/glad.c
 )
-target_link_libraries(windowlib imgui glfw)
+target_link_libraries(windowlib imgui glfw Vulkan::Vulkan)
 target_compile_definitions(windowlib PUBLIC
   IMGUI_IMPL_OPENGL_LOADER_GLAD
 )
