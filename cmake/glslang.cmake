@@ -1,35 +1,40 @@
-if (WIN32)
-  if(NOT EXISTS "$ENV{VULKAN_SDK}")
-    message(SEND_ERROR "VULKAN_SDK envvar not set")
+find_program(GLSLANG
+  NAMES glslang glslangValidator
+  PATHS $ENV{VULKAN_DIR}/bin $ENV{VULKAN_DIR}/bin32
+)
+
+macro(add_spirv_shader GLSL_SOURCE_FILE)
+  set(oneValueArgs OUTPUT EMBED)
+  set(multiValueArgs "")
+  cmake_parse_arguments(SPIRV_SHADER "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
+
+  # Check args.
+  if(NOT DEFINED SPIRV_SHADER_OUTPUT)
+    message(FATAL_ERROR "You must set OUTPUT to compile GLSL to SPIR-V.")
   endif()
 
-  if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
-    set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe")
-  else()
-    set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin32/glslangValidator.exe")
+  # Get absolute path to GLSL.
+  get_filename_component(GLSL_SOURCE_FILE_ABS ${GLSL_SOURCE_FILE} ABSOLUTE)
+
+  # Get directory of output SPIR-V for creating the dir before compilation.
+  get_filename_component(OUTPUT_DIR ${SPIRV_SHADER_OUTPUT} DIRECTORY)
+
+  # Mark output as generated file.
+  set_source_files_properties(${SPIRV_SHADER_OUTPUT} PROPERTIES GENERATED TRUE)
+
+  set(GLSLANG_FLAGS "")
+
+  # Embedding SPIR-V blob into the artifact.
+  if(DEFINED SPIRV_SHADER_EMBED)
+    set(GLSLANG_FLAGS ${GLSLANG_FLAGS} --vn ${SPIRV_SHADER_EMBED})
   endif()
 
-else()
-  set(GLSL_VALIDATOR glslangValidator)
-endif()
-
-macro(add_spirv_shader GLSL_SOURCE_FILE SPIRV_FILE)
-  set(multiValueArgs DEPENDS)
-  cmake_parse_arguments(SPIRV_SHADER "" "" "${multiValueArgs}" ${ARGN} )
-
-  if (IS_ABSOLUTE(GLSL_SOURCE_FILE))
-    set(GLSL_SOURCE_FILE_ABS "${GLSL_SOURCE_FILE}")
-  else()
-    set(GLSL_SOURCE_FILE_ABS "${PROJECT_SOURCE_DIR}/${GLSL_SOURCE_FILE}")
-  endif()
-
-  get_filename_component(DIR_NAME ${GLSL_SOURCE_FILE} DIRECTORY)
   add_custom_command(
-    OUTPUT ${SPIRV_FILE}
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${DIR_NAME}"
-    COMMAND ${GLSL_VALIDATOR} -V ${GLSL_SOURCE_FILE_ABS} -o ${SPIRV_FILE}
-    DEPENDS ${GLSL_SOURCE_FILE} ${SPIRV_SHADER_DEPENDS}
-    SOURCES ${GLSL_SOURCE_FILE}
+    MAIN_DEPENDENCY ${GLSL_SOURCE_FILE}
+    OUTPUT ${SPIRV_SHADER_OUTPUT}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
+    COMMAND ${GLSLANG} ${GLSLANG_FLAGS} -V --target-env vulkan1.0 -o ${SPIRV_SHADER_OUTPUT} ${GLSL_SOURCE_FILE_ABS}
+    DEPENDS ${GLSL_SOURCE_FILE}
   )
 endmacro(add_spirv_shader)
 
@@ -44,14 +49,13 @@ macro(add_spirv_shader_lib TARGET_NAME)
     set(OUTPUT_PATH "${PROJECT_BINARY_DIR}/${SPIRV_SHADER_LIB_OUTPUT}")
   endif()
 
-
   set(SPIRV_FILES "")
   foreach (GLSL_FILE ${SPIRV_SHADER_LIB_SOURCES})
     get_filename_component(FILE_NAME ${GLSL_FILE} NAME)
     set(SPIRV_FILE "${OUTPUT_PATH}/${FILE_NAME}.spv")
     add_spirv_shader(
       ${GLSL_FILE}
-      ${SPIRV_FILE}
+      OUTPUT ${SPIRV_FILE}
     )
     list(APPEND SPIRV_FILES ${SPIRV_FILE})
   endforeach()
