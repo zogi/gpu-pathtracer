@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.8)
 
 project(GpuPathTracer CXX)
 
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 include(cmake/glslang.cmake)
 
 # Vulkan
@@ -13,6 +16,14 @@ if (WIN32)
   set_target_properties(vulkan-1.lib PROPERTIES
     INTERFACE_LINK_LIBRARIES "${VULKAN_LIBRARY}")
 endif()
+
+# SPIRV-Reflect
+add_library(spirv_reflect STATIC
+  external/SPIRV-Reflect/spirv_reflect.c
+)
+target_include_directories(spirv_reflect PUBLIC
+  external/SPIRV-Reflect
+)
 
 # Radeon Rays
 option(RR_USE_VULKAN "" ON)
@@ -26,6 +37,9 @@ option(RR_SHARED_CALC "" OFF)
 option(RR_ENABLE_RAYMASK "" OFF)
 option(RR_ENABLE_BACKFACE_CULL "" OFF)
 add_subdirectory(external/RadeonRays_SDK)
+
+# GSL
+add_subdirectory(external/GSL)
 
 # stb
 add_library(stb INTERFACE)
@@ -92,5 +106,5 @@ add_executable(GpuPathTracer
   camera.cpp
 )
 target_link_libraries(GpuPathTracer
-  RadeonRays stb tinyobjloader windowlib glm
+  RadeonRays Anvil stb tinyobjloader windowlib glm spirv_reflect GSL
 )
