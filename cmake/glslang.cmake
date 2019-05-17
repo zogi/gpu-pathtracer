@@ -39,15 +39,29 @@ macro(add_spirv_shader GLSL_SOURCE_FILE)
 endmacro(add_spirv_shader)
 
 macro(add_spirv_shader_lib TARGET_NAME)
+  set(options EMBED)
   set(oneValueArgs OUTPUT)
   set(multiValueArgs SOURCES DEPENDS)
-  cmake_parse_arguments(SPIRV_SHADER_LIB "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
+  cmake_parse_arguments(SPIRV_SHADER_LIB "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
 
-  if (IS_ABSOLUTE(SPIRV_SHADER_LIB_OUTPUT))
-    set(OUTPUT_PATH "${SPIRV_SHADER_LIB_OUTPUT}")
-  else()
-    set(OUTPUT_PATH "${PROJECT_BINARY_DIR}/${SPIRV_SHADER_LIB_OUTPUT}")
-  endif()
+  get_filename_component(OUTPUT_PATH ${SPIRV_SHADER_LIB_OUTPUT} ABSOLUTE)
+
+  #get_filename_component(OUTPUT_DIR ${SPIRV_SHADER_LIB_OUTPUT} DIRECTORY)
+  #get_filename_component(OUTPUT_DIR_ABS ${OUTPUT_DIR} ABSOLUTE)
+  #set(INCLUDE_LINES "")
+  #set(HEADER_FILES "")
+  #foreach (GLSL_FILE ${SPIRV_SHADER_LIB_SOURCES})
+  #  get_filename_component(GLSL_FILE_NAME ${GLSL_FILE_NAME} NAME)
+  #  set(HEADER_FILE ${OUTPUT_DIR_ABS}/${GLSL_FILE}.spv.h)
+  #  add_spirv_shader(
+  #    ${GLSL_FILE}
+  #    OUTPUT ${HEADER_FILE}
+  #    EMBED ${SHADER}_spirv
+  #  )
+  #  set(INCLUDES "${INCLUDES}\n#include <spirv/${SHADER}.spv.h>")
+  #  set(SHADERS ${SHADERS} ${SHADER}.comp)
+  #  set(HEADERS ${HEADERS} ${RadeonRays_BINARY_DIR}/spirv/${SHADER}.spv.h)
+  #endforeach
 
   set(SPIRV_FILES "")
   foreach (GLSL_FILE ${SPIRV_SHADER_LIB_SOURCES})

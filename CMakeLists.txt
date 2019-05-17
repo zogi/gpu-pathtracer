@@ -99,11 +99,34 @@ add_spirv_shader_lib(imgui_shaders
 )
 add_dependencies(windowlib imgui_shaders)
 
+add_spirv_shader(
+  shaders/quad.vert
+  OUTPUT ${PROJECT_BINARY_DIR}/include/shaders/quad.vert.spv.h
+  EMBED quad_vert_spirv
+)
+add_spirv_shader(
+  shaders/depth.frag
+  OUTPUT ${PROJECT_BINARY_DIR}/include/shaders/depth.frag.spv.h
+  EMBED depth_frag_spirv
+)
+source_group("shaders" FILES
+  shaders/quad.vert
+  shaders/depth.frag
+)
+
 # Main
 add_executable(GpuPathTracer
   main.cpp
   camera.h
   camera.cpp
+  common.h
+  shaders/quad.vert
+  ${PROJECT_BINARY_DIR}/include/shaders/quad.vert.spv.h
+  shaders/depth.frag
+  ${PROJECT_BINARY_DIR}/include/shaders/depth.frag.spv.h
+)
+target_include_directories(GpuPathTracer PRIVATE
+  ${PROJECT_BINARY_DIR}/include
 )
 target_link_libraries(GpuPathTracer
   RadeonRays Anvil stb tinyobjloader windowlib glm spirv_reflect GSL
