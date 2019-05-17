@@ -1,12 +1,17 @@
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
 #include <array>
 #include <memory>
+#include <unordered_map>
 #include <vector>
+
+#include <gsl/gsl_util>
+#include <gsl/span>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -30,3 +35,7 @@
 #include <vulkan/vulkan.h>
 
 #include <radeon_rays.h>
+
+#ifndef ARRAYSIZE
+#define ARRAYSIZE(array) (sizeof(array) / sizeof((array)[0]))
+#endif

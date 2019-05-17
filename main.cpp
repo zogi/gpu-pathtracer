@@ -1,11 +1,19 @@
-#include "common.h"
 #include "camera.h"
+#include "common.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
 #define STB_IMPLEMENTATION
 #include <stb_image.h>
+
+#include <shaders/depth.frag.spv.h>
+#include <shaders/quad.vert.spv.h>
+#include <spirv_reflect.h>
+
+//#ifdef _WIN32
+//#include <winbase.h>
+//#endif
 
 // === Intersection ===
 
@@ -50,7 +58,15 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_report(
   (void)messageCode;
   (void)pUserData;
   (void)pLayerPrefix; // Unused arguments
-  fprintf(stderr, "[vulkan] ObjectType: %i\nMessage: %s\n\n", objectType, pMessage);
+
+  char message[4096];
+  snprintf(message, ARRAYSIZE(message), "%s: %s\n", objectType, pMessage);
+  fprintf(stderr, "%s", message);
+#ifdef _WIN32
+  //OutputDebugStringA(message);
+#endif
+  if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
+    assert(!"Validation error encountered!");
   return VK_FALSE;
 }
 #endif // IMGUI_VULKAN_DEBUG_REPORT
@@ -90,6 +106,11 @@ using GLFWwindowPtr = std::unique_ptr<GLFWwindow, GLFWwindowDeleter>;
 static void FramePresent(ImGui_ImplVulkanH_WindowData *wd);
 static void FrameRender(ImGui_ImplVulkanH_WindowData *wd);
 
+struct Extent {
+  int width;
+  int height;
+};
+
 class Window {
  public:
   Window(int width, int height);
@@ -105,6 +126,13 @@ class Window {
     auto wd = &window_data_.imgui_data;
     FrameRender(wd);
     FramePresent(wd);
+  }
+
+  Extent extent() const
+  {
+    Extent res;
+    glfwGetWindowSize(window_.get(), &res.width, &res.height);
+    return res;
   }
 
  private:
@@ -325,6 +353,67 @@ static void glfwErrorCallback(int error, const char *description)
 static void SetupVulkan(const char **extensions, uint32_t extensions_count);
 static void CleanupVulkan();
 
+// === SPIR-V reflection utilities ===
+
+using SPIRVBytecodeView = gsl::span<uint8_t>;
+
+// The DescriptorSetLayoutData structure definition and the body of
+// createDescriptorSetLayoutDataFromSPIRV were copied from
+// external/SPIRV-Reflect/examples/main_descriptors.cpp
+// The code has been modified to work as a function.
+// License can be found at the end of external/SPIRV-Reflect/README.md
+
+struct DescriptorSetLayoutData {
+  uint32_t set_number;
+  VkDescriptorSetLayoutCreateInfo create_info;
+  std::vector<VkDescriptorSetLayoutBinding> bindings;
+};
+
+using DescriptorSetLayoutMap = std::unordered_map<int, SpvReflectDescriptorSet>;
+
+std::vector<DescriptorSetLayoutData> getDescriptorSetLayoutDataFromSPIRV(SPIRVBytecodeView spirv)
+{
+  SpvReflectShaderModule module = {};
+  SpvReflectResult result = spvReflectCreateShaderModule(spirv.size_bytes(), spirv.data(), &module);
+  assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+  uint32_t count = 0;
+  result = spvReflectEnumerateDescriptorSets(&module, &count, NULL);
+  assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+  std::vector<SpvReflectDescriptorSet *> sets(count);
+  result = spvReflectEnumerateDescriptorSets(&module, &count, sets.data());
+  assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+  std::vector<DescriptorSetLayoutData> set_layouts(sets.size(), DescriptorSetLayoutData{});
+  for (size_t i_set = 0; i_set < sets.size(); ++i_set) {
+    const SpvReflectDescriptorSet &refl_set = *(sets[i_set]);
+    DescriptorSetLayoutData &layout = set_layouts[i_set];
+    layout.bindings.resize(refl_set.binding_count);
+    for (uint32_t i_binding = 0; i_binding < refl_set.binding_count; ++i_binding) {
+      const SpvReflectDescriptorBinding &refl_binding = *(refl_set.bindings[i_binding]);
+      VkDescriptorSetLayoutBinding &layout_binding = layout.bindings[i_binding];
+      layout_binding.binding = refl_binding.binding;
+      layout_binding.descriptorType = static_cast<VkDescriptorType>(refl_binding.descriptor_type);
+      layout_binding.descriptorCount = 1;
+      for (uint32_t i_dim = 0; i_dim < refl_binding.array.dims_count; ++i_dim) {
+        layout_binding.descriptorCount *= refl_binding.array.dims[i_dim];
+      }
+      layout_binding.stageFlags = static_cast<VkShaderStageFlagBits>(module.shader_stage);
+    }
+    layout.set_number = refl_set.set;
+    layout.create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout.create_info.bindingCount = refl_set.binding_count;
+    layout.create_info.pBindings = layout.bindings.data();
+  }
+
+  spvReflectDestroyShaderModule(&module);
+
+  return set_layouts;
+}
+
+// === main ===
+
 int main()
 {
   struct GLFWGuard {
@@ -347,7 +436,6 @@ int main()
   Window window(1280, 720);
   window.setBackgroudColor(ImVec4(0.45f, 0.55f, 0.60f, 1.00f));
 
-#if 0
   // Init RadeonRays intersection API.
   IntersectionApiPtr intersection_api = []() {
     int device_idx = -1;
@@ -386,12 +474,176 @@ int main()
   std::vector<int> numFaceVertices(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
 
   RadeonRays::Shape *shape = intersection_api->CreateMesh(
-    attrib.vertices.data(), 3, 3 * sizeof(float), indices.data(), 0, numFaceVertices.data(),
-    numFaceVertices.size());
+    attrib.vertices.data(), attrib.vertices.size() / 3, 3 * sizeof(float), indices.data(), 0,
+    numFaceVertices.data(), numFaceVertices.size());
 
   intersection_api->AttachShape(shape);
   intersection_api->Commit();
-#endif
+
+  // Graphics resources
+  {
+    // Quad vertex shader.
+    VkShaderModule quad_vs = {};
+    {
+      VkShaderModuleCreateInfo create_info = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+      create_info.pCode = quad_vert_spirv;
+      create_info.codeSize = sizeof(quad_vert_spirv);
+      VKCHECK(vkCreateShaderModule(g_vulkan.device, &create_info, nullptr, &quad_vs));
+    }
+
+    // Get descriptor set layout
+    VkDescriptorSetLayout set_layout;
+    {
+      //const auto layout_data = getDescriptorSetLayoutDataFromSPIRV();
+    }
+
+
+    // Depth fragment shader.
+    VkShaderModule depth_fs = {};
+    {
+      VkShaderModuleCreateInfo createInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+      createInfo.pCode = depth_frag_spirv;
+      createInfo.codeSize = sizeof(depth_frag_spirv);
+      VKCHECK(vkCreateShaderModule(g_vulkan.device, &createInfo, nullptr, &depth_fs));
+    }
+
+    VkPipelineCache pipeline_cache = {};
+    {
+      VkPipelineCacheCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
+      vkCreatePipelineCache(g_vulkan.device, &create_info, nullptr, &pipeline_cache);
+    }
+
+    VkPipeline depth_pipeline = {};
+    {
+      VkPipelineShaderStageCreateInfo stage_create_infos[2];
+      // Vertex shader.
+      stage_create_infos[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+      stage_create_infos[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+      stage_create_infos[0].module = quad_vs;
+      stage_create_infos[0].pName = "main";
+      // Fragment shader.
+      stage_create_infos[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+      stage_create_infos[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+      stage_create_infos[1].module = depth_fs;
+      stage_create_infos[1].pName = "main";
+
+      VkPipelineVertexInputStateCreateInfo vs_create_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+      };
+
+      VkViewport viewport = {};
+      viewport.x = 0;
+      viewport.y = 0;
+      // TODO: resize?
+      const Extent window_extent = window.extent();
+      viewport.width = window_extent.width;
+      viewport.height = window_extent.height;
+
+      VkRect2D scissor = {};
+      scissor.extent.width = window_extent.width;
+      scissor.extent.height = window_extent.height;
+
+      // TODO: should be dynamic
+      VkPipelineViewportStateCreateInfo viewport_state_create_info = {
+        VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO
+      };
+      viewport_state_create_info.viewportCount = 1;
+      viewport_state_create_info.pViewports = &viewport;
+      viewport_state_create_info.scissorCount = 1;
+      viewport_state_create_info.pScissors = &scissor;
+
+      VkGraphicsPipelineCreateInfo create_info = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+      create_info.stageCount = 2;
+      create_info.pStages = stage_create_infos;
+      create_info.pVertexInputState = &vs_create_info;
+      create_info.pInputAssemblyState;
+      create_info.pViewportState = &viewport_state_create_info;
+
+      VkPipelineRasterizationStateCreateInfo raster_state = {
+        VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO
+      };
+      raster_state.polygonMode = VK_POLYGON_MODE_FILL;
+      raster_state.cullMode = VK_CULL_MODE_BACK_BIT;
+      raster_state.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+      raster_state.depthBiasEnable = false;
+
+      VkPipelineMultisampleStateCreateInfo multisample_state = {
+        VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
+      };
+      multisample_state.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+      multisample_state.sampleShadingEnable = false;
+      multisample_state.minSampleShading = 0.0;
+      multisample_state.pSampleMask = nullptr;
+      multisample_state.alphaToCoverageEnable = false;
+      multisample_state.alphaToOneEnable = false;
+
+      VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {
+        VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO
+      };
+      depth_stencil_state.depthTestEnable = true;
+      depth_stencil_state.depthWriteEnable = true;
+      // Using inverse depth: 1 near, 0 far.
+      depth_stencil_state.depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
+      depth_stencil_state.depthBoundsTestEnable = false;
+      // depth_stencil_state.minDepthBounds;
+      // depth_stencil_state.maxDepthBounds;
+      depth_stencil_state.stencilTestEnable = false;
+      // depth_stencil_state.front;
+      // depth_stencil_state.back;
+
+      VkPipelineColorBlendAttachmentState color_blend_attachment_state = {};
+      color_blend_attachment_state.blendEnable = false;
+      color_blend_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+      color_blend_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+      color_blend_attachment_state.colorBlendOp = VK_BLEND_OP_ADD;
+      color_blend_attachment_state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+      color_blend_attachment_state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+      color_blend_attachment_state.alphaBlendOp = VK_BLEND_OP_ADD;
+      color_blend_attachment_state.colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
+        VK_COLOR_COMPONENT_A_BIT;
+
+      VkPipelineColorBlendStateCreateInfo color_blend_state = {
+        VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO
+      };
+      color_blend_state.logicOpEnable = false;
+      // color_blend_state.logicOp;
+      color_blend_state.attachmentCount = 1; // Note: MUST equal to the subpass colorAttachmentCount
+      color_blend_state.pAttachments = &color_blend_attachment_state;
+      // color_blend_state.blendConstants[4];
+
+      VkPipelineDynamicStateCreateInfo dynamic_state = {
+        VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO
+      };
+      dynamic_state.dynamicStateCount = 0;
+      dynamic_state.pDynamicStates = nullptr;
+
+      // Pipeline layout
+      VkPipelineLayout pipeline_layout = {};
+      {
+        VkPipelineLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+        create_info.setLayoutCount = 1;
+        create_info.pSetLayouts = &set_layout;
+        create_info.pushConstantRangeCount = 0;
+        create_info.pPushConstantRanges = nullptr;
+        vkCreatePipelineLayout(g_vulkan.device, &create_info, nullptr, &pipeline_layout);
+      }
+
+      create_info.pRasterizationState = &raster_state;
+      create_info.pMultisampleState = &multisample_state;
+      create_info.pDepthStencilState = &depth_stencil_state;
+      create_info.pColorBlendState = &color_blend_state;
+      create_info.pDynamicState = &dynamic_state;
+      create_info.layout = pipeline_layout;
+      VkRenderPass renderPass;
+      uint32_t subpass;
+      VkPipeline basePipelineHandle;
+      int32_t basePipelineIndex;
+
+      VKCHECK(vkCreateGraphicsPipelines(
+        g_vulkan.device, pipeline_cache, 1, &create_info, nullptr, &depth_pipeline));
+    }
+  }
 
   while (!window.shouldClose()) {
     glfwPollEvents();
