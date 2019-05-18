@@ -12,7 +12,7 @@
 #include <spirv_reflect.h>
 
 //#ifdef _WIN32
-//#include <winbase.h>
+//#include <windows.h>
 //#endif
 
 // === Intersection ===
@@ -63,7 +63,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_report(
   snprintf(message, ARRAYSIZE(message), "%s: %s\n", objectType, pMessage);
   fprintf(stderr, "%s", message);
 #ifdef _WIN32
-  //OutputDebugStringA(message);
+  // OutputDebugStringA(message);
 #endif
   if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
     assert(!"Validation error encountered!");
@@ -357,6 +357,80 @@ static void CleanupVulkan();
 
 using SPIRVBytecodeView = gsl::span<uint8_t>;
 
+std::vector<VkDescriptorSetLayout>
+createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
+{
+  // Load reflection data for the shaders.
+  std::vector<SpvReflectShaderModule> shaders(spirv_bytecodes.size());
+  for (int i = 0; i < shaders.size(); ++i) {
+    auto &spirv = spirv_bytecodes[i];
+    auto &shader = shaders[i];
+    spvReflectCreateShaderModule(spirv.size(), spirv.data(), &shader);
+  }
+
+  // Collect bindings by set number and binding slot. Assert on collision.
+  using SetNumber = uint32_t;
+  using BindingNumber = uint32_t;
+  struct BindingData {
+    SpvReflectDescriptorBinding *p_binding;
+    VkShaderStageFlags stage_flags;
+  };
+  std::unordered_map<SetNumber, std::map<BindingNumber, BindingData>> bindings;
+  for (auto &shader : shaders) {
+    for (int i = 0; i < shader.descriptor_binding_count; ++i) {
+      auto &binding = shader.descriptor_bindings[i];
+      auto [it, inserted] = bindings[binding.set].emplace(binding.binding, BindingData{ &binding, 0 });
+      if (!inserted) {
+        // This binding slot is already taken. Just assert if the types match. Linking should take
+        // care of other mismatches.
+        assert(binding.descriptor_type == it->second.descriptor_type);
+      }
+      it->second.stage_flags |= shader.shader_stage;
+    }
+  }
+
+  // Create the descriptor set layouts.
+  std::vector<VkDescriptorSetLayout> res;
+  const size_t set_count = bindings.size();
+  res.reserve(set_count);
+  for (auto &[set_number, bindings_map] : bindings) {
+    // Convert spirv reflection binding data to Vulkan binding data.
+    std::vector<VkDescriptorSetLayoutBinding> vk_bindings;
+    vk_bindings.reserve(bindings_map.size());
+    for (auto &[binding_number, binding_data] : bindings_map) {
+      auto p_binding = binding_data.p_binding;
+      VkDescriptorSetLayoutBinding vk_binding = {};
+      vk_binding.binding = binding_number;
+      vk_binding.descriptorType = VkDescriptorType(p_binding->descriptor_type);
+      vk_binding.descriptorCount = 1;
+      for (uint32_t i = 0; i < p_binding->array.dims_count; ++i) {
+        vk_binding.descriptorCount *= p_binding->array.dims[i];
+      }
+      vk_binding.stageFlags = binding_data.stage_flags;
+      // TODO: immutable sampler support?
+      // vk_binding.pImmutableSamplers;
+      vk_bindings.push_back(vk_binding);
+    }
+
+    // Create descriptor set.
+    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    // TODO: push descriptors?
+    // create_info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+    create_info.bindingCount = vk_bindings.size();
+    create_info.pBindings = vk_bindings.data();
+
+    res.emplace_back();
+    vkCreateDescriptorSetLayout(g_vulkan.device, &create_info, nullptr, &res.back());
+  }
+
+  // Free memory backing reflection data.
+  for (auto &shader : shaders) {
+    spvReflectDestroyShaderModule(&shader);
+  }
+
+  return res;
+}
+
 // The DescriptorSetLayoutData structure definition and the body of
 // createDescriptorSetLayoutDataFromSPIRV were copied from
 // external/SPIRV-Reflect/examples/main_descriptors.cpp
@@ -368,8 +442,6 @@ struct DescriptorSetLayoutData {
   VkDescriptorSetLayoutCreateInfo create_info;
   std::vector<VkDescriptorSetLayoutBinding> bindings;
 };
-
-using DescriptorSetLayoutMap = std::unordered_map<int, SpvReflectDescriptorSet>;
 
 std::vector<DescriptorSetLayoutData> getDescriptorSetLayoutDataFromSPIRV(SPIRVBytecodeView spirv)
 {
@@ -482,6 +554,8 @@ int main()
 
   // Graphics resources
   {
+    // TODO: have to destroy the shaders modules, so the vulkan handles need to be stored somewhere.
+
     // Quad vertex shader.
     VkShaderModule quad_vs = {};
     {
@@ -490,13 +564,6 @@ int main()
       create_info.codeSize = sizeof(quad_vert_spirv);
       VKCHECK(vkCreateShaderModule(g_vulkan.device, &create_info, nullptr, &quad_vs));
     }
-
-    // Get descriptor set layout
-    VkDescriptorSetLayout set_layout;
-    {
-      //const auto layout_data = getDescriptorSetLayoutDataFromSPIRV();
-    }
-
 
     // Depth fragment shader.
     VkShaderModule depth_fs = {};
@@ -618,12 +685,17 @@ int main()
       dynamic_state.dynamicStateCount = 0;
       dynamic_state.pDynamicStates = nullptr;
 
+      // Get descriptor set layouts from the shader bytecodes.
+      // TODO: have to destroy the set layouts, so the vulkan handles need to be stored somewhere.
+      auto desc_set_layouts = createDescriptorSetLayout({ quad_vs, depth_fs });
+
       // Pipeline layout
+      // TODO: have to destroy the pipeline layouts so the vulkan handle need to be stored somewhere.
       VkPipelineLayout pipeline_layout = {};
       {
         VkPipelineLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-        create_info.setLayoutCount = 1;
-        create_info.pSetLayouts = &set_layout;
+        create_info.setLayoutCount = desc_set_layouts.size();
+        create_info.pSetLayouts = desc_set_layouts.data();
         create_info.pushConstantRangeCount = 0;
         create_info.pPushConstantRanges = nullptr;
         vkCreatePipelineLayout(g_vulkan.device, &create_info, nullptr, &pipeline_layout);
