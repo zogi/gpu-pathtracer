@@ -21,7 +21,7 @@ endif()
 add_library(spirv_reflect STATIC
   external/SPIRV-Reflect/spirv_reflect.c
 )
-target_include_directories(spirv_reflect PUBLIC
+target_include_directories(spirv_reflect SYSTEM PUBLIC
   external/SPIRV-Reflect
 )
 
@@ -43,8 +43,8 @@ add_subdirectory(external/GSL)
 
 # stb
 add_library(stb INTERFACE)
-set_target_properties(stb PROPERTIES
-  INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_LIST_DIR}/external/stb
+target_include_directories(stb SYSTEM INTERFACE
+  ${CMAKE_CURRENT_LIST_DIR}/external/stb
 )
 
 # Tiny OBJ loader
@@ -55,8 +55,9 @@ add_subdirectory(external/tinyobjloader)
 
 # glm
 add_library(glm INTERFACE)
-target_include_directories(glm INTERFACE
-    ${PROJECT_SOURCE_DIR}/external/glm)
+target_include_directories(glm SYSTEM INTERFACE
+  ${PROJECT_SOURCE_DIR}/external/glm
+)
 
 # glfw
 option(GLFW_BUILD_EXAMPLES "" OFF)
@@ -70,7 +71,7 @@ add_subdirectory(external/glfw)
 # imgui
 file(GLOB IMGUI_SRC external/imgui/*.cpp)
 add_library(imgui STATIC ${IMGUI_SRC})
-target_include_directories(imgui PUBLIC external/imgui)
+target_include_directories(imgui SYSTEM PUBLIC external/imgui)
 
 # windowlib
 add_library(windowlib STATIC
@@ -84,7 +85,7 @@ target_link_libraries(windowlib imgui glfw Vulkan::Vulkan)
 target_compile_definitions(windowlib PUBLIC
   IMGUI_IMPL_OPENGL_LOADER_GLAD
 )
-target_include_directories(windowlib PUBLIC
+target_include_directories(windowlib SYSTEM PUBLIC
   external/imgui/examples
   glad/include
 )
