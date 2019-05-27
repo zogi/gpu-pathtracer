@@ -804,6 +804,24 @@ int main()
     cache_file.close();
   }
 
+  // Create command buffer pool and command buffer.
+  VkCommandPool command_pool = {};
+  VkCommandBuffer command_buffer = {};
+  {
+    VkCommandPoolCreateInfo create_info = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
+    // This means command buffers are short-lived. TODO: revisit later
+    create_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    create_info.queueFamilyIndex = g_vulkan.queue_family;
+    VKCHECK(vkCreateCommandPool(g_vulkan.device, &create_info, nullptr, &command_pool));
+  }
+  {
+    VkCommandBufferAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    allocate_info.commandPool = command_pool;
+    allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocate_info.commandBufferCount = 1;
+    VKCHECK(vkAllocateCommandBuffers(g_vulkan.device, &allocate_info, &command_buffer));
+  }
+
   while (!window->shouldClose()) {
     glfwPollEvents();
 
@@ -823,6 +841,18 @@ int main()
     // Render.
     ImGui::Render();
     window->render();
+
+    VKCHECK(vkResetCommandPool(g_vulkan.device, command_pool, 0));
+    {
+      VkCommandBufferBeginInfo begin_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+      // TODO: revisit later
+      begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+      VKCHECK(vkBeginCommandBuffer(command_buffer, &begin_info));
+    }
+
+    // TODO
+
+    VKCHECK(vkEndCommandBuffer(command_buffer));
   }
 
   intersection_api.reset();
