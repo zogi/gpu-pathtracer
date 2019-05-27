@@ -649,7 +649,7 @@ int main()
       VKCHECK(vkCreateShaderModule(g_vulkan.device, &createInfo, nullptr, &depth_fs));
     }
 
-    VkPipelineShaderStageCreateInfo stage_create_infos[2];
+    VkPipelineShaderStageCreateInfo stage_create_infos[2] = {};
     // Vertex shader.
     stage_create_infos[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage_create_infos[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -664,6 +664,12 @@ int main()
     VkPipelineVertexInputStateCreateInfo vs_create_info = {
       VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
     };
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info = {
+      VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
+    };
+    input_assembly_state_create_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    input_assembly_state_create_info.primitiveRestartEnable = false;
 
     VkViewport viewport = {};
     viewport.x = 0;
@@ -686,13 +692,6 @@ int main()
     viewport_state_create_info.scissorCount = 1;
     viewport_state_create_info.pScissors = &scissor;
 
-    VkGraphicsPipelineCreateInfo create_info = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-    create_info.stageCount = 2;
-    create_info.pStages = stage_create_infos;
-    create_info.pVertexInputState = &vs_create_info;
-    create_info.pInputAssemblyState;
-    create_info.pViewportState = &viewport_state_create_info;
-
     VkPipelineRasterizationStateCreateInfo raster_state = {
       VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO
     };
@@ -700,6 +699,7 @@ int main()
     raster_state.cullMode = VK_CULL_MODE_BACK_BIT;
     raster_state.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     raster_state.depthBiasEnable = false;
+    raster_state.lineWidth = 1.0;
 
     VkPipelineMultisampleStateCreateInfo multisample_state = {
       VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
@@ -769,6 +769,12 @@ int main()
       vkCreatePipelineLayout(g_vulkan.device, &create_info, nullptr, &pipeline_layout);
     }
 
+    VkGraphicsPipelineCreateInfo create_info = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+    create_info.stageCount = 2;
+    create_info.pStages = stage_create_infos;
+    create_info.pVertexInputState = &vs_create_info;
+    create_info.pInputAssemblyState = &input_assembly_state_create_info;
+    create_info.pViewportState = &viewport_state_create_info;
     create_info.pRasterizationState = &raster_state;
     create_info.pMultisampleState = &multisample_state;
     create_info.pDepthStencilState = &depth_stencil_state;
@@ -778,9 +784,8 @@ int main()
     create_info.renderPass = render_pass;
     create_info.subpass = 0;
 
-    // TODO: fix crash
-    // VKCHECK(vkCreateGraphicsPipelines(
-    //  g_vulkan.device, pipeline_cache, 1, &create_info, nullptr, &ray_depth_pipeline));
+    VKCHECK(vkCreateGraphicsPipelines(
+      g_vulkan.device, g_vulkan.pipeline_cache, 1, &create_info, nullptr, &ray_depth_pipeline));
 
     ray_depth_program.shaders.push_back(quad_vs);
     ray_depth_program.shaders.push_back(depth_fs);
@@ -825,6 +830,7 @@ int main()
   vkDestroyPipelineCache(g_vulkan.device, g_vulkan.pipeline_cache, nullptr);
   vkDestroyRenderPass(g_vulkan.device, render_pass, nullptr);
   destroyProgram(ray_depth_program);
+  vkDestroyPipeline(g_vulkan.device, ray_depth_pipeline, nullptr);
   window.reset();
   CleanupVulkan();
 
