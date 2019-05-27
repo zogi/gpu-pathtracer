@@ -15,6 +15,8 @@
 //#include <windows.h>
 //#endif
 
+constexpr const char *kPipelineCacheFileName = "pipeline_cache.bin";
+
 // === Intersection ===
 
 using RadeonRays::DeviceInfo;
@@ -60,7 +62,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_report(
   (void)pLayerPrefix; // Unused arguments
 
   char message[4096];
-  snprintf(message, ARRAYSIZE(message), "%s: %s\n", objectType, pMessage);
+  snprintf(message, ARRAYSIZE(message), "%d: %s\n", objectType, pMessage);
   fprintf(stderr, "%s", message);
 #ifdef _WIN32
   // OutputDebugStringA(message);
@@ -262,6 +264,27 @@ Window::Window(int width, int height)
     window->camera_controller_.scrollCallback(window_, xoffset, yoffset);
   });
 
+  // Load pipeline cache.
+  {
+    std::vector<char> cache_data;
+
+    if (std::ifstream cache_file(kPipelineCacheFileName); cache_file) {
+      FILE *f = fopen(kPipelineCacheFileName, "r");
+      // Determine file size
+      fseek(f, 0, SEEK_END);
+      const size_t size = ftell(f);
+      cache_data.resize(size);
+      rewind(f);
+      fread(cache_data.data(), sizeof(char), size, f);
+      fclose(f);
+    }
+
+    VkPipelineCacheCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
+    create_info.initialDataSize = cache_data.size();
+    create_info.pInitialData = cache_data.data();
+    VKCHECK(vkCreatePipelineCache(g_vulkan.device, &create_info, nullptr, &g_vulkan.pipeline_cache));
+  }
+
   // Init ImGui.
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
@@ -379,7 +402,7 @@ createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
   };
   std::unordered_map<SetNumber, std::map<BindingNumber, BindingData>> bindings;
   for (auto &shader : shaders) {
-    for (int i = 0; i < shader.descriptor_binding_count; ++i) {
+    for (size_t i = 0; i < shader.descriptor_binding_count; ++i) {
       auto &binding = shader.descriptor_bindings[i];
       auto [it, inserted] = bindings[binding.set].emplace(binding.binding, BindingData{ &binding, 0 });
       if (!inserted) {
@@ -418,7 +441,7 @@ createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
     VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
     // TODO: push descriptors?
     // create_info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-    create_info.bindingCount = vk_bindings.size();
+    create_info.bindingCount = uint32_t(vk_bindings.size());
     create_info.pBindings = vk_bindings.data();
 
     res.emplace_back();
@@ -524,8 +547,8 @@ int main()
   SetupVulkan(extensions, extensions_count);
 
   // Init window.
-  Window window(1280, 720);
-  window.setBackgroudColor(ImVec4(0.45f, 0.55f, 0.60f, 1.00f));
+  auto window = std::make_unique<Window>(1280, 720);
+  window->setBackgroudColor(ImVec4(0.45f, 0.55f, 0.60f, 1.00f));
 
   // Init RadeonRays intersection API.
   IntersectionApiPtr intersection_api = []() {
@@ -546,37 +569,40 @@ int main()
   intersection_api->SetOption("bvh.builder", "sah");
 
   // Load test geometry.
-  tinyobj::attrib_t attrib;
-  std::vector<tinyobj::shape_t> shapes;
-  std::vector<tinyobj::material_t> materials;
-  std::string warn;
-  std::string err;
-  const std::string filename = "../models/lucy/lucy.obj";
-  const bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str());
+  {
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn;
+    std::string err;
+    const std::string filename = "../models/lucy/lucy.obj";
+    const bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str());
 
-  const auto &mesh = shapes[0].mesh;
+    const auto &mesh = shapes[0].mesh;
 
-  std::vector<int> indices;
-  indices.reserve(mesh.indices.size());
-  for (const auto &tinyobj_index : mesh.indices) {
-    indices.push_back(tinyobj_index.vertex_index);
+    std::vector<int> indices;
+    indices.reserve(mesh.indices.size());
+    for (const auto &tinyobj_index : mesh.indices) {
+      indices.push_back(tinyobj_index.vertex_index);
+    }
+
+    std::vector<int> numFaceVertices(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
+
+    RadeonRays::Shape *shape = intersection_api->CreateMesh(
+      attrib.vertices.data(), attrib.vertices.size() / 3, 3 * sizeof(float), indices.data(), 0,
+      numFaceVertices.data(), numFaceVertices.size());
+
+    intersection_api->AttachShape(shape);
+    intersection_api->Commit();
   }
-
-  std::vector<int> numFaceVertices(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
-
-  RadeonRays::Shape *shape = intersection_api->CreateMesh(
-    attrib.vertices.data(), attrib.vertices.size() / 3, 3 * sizeof(float), indices.data(), 0,
-    numFaceVertices.data(), numFaceVertices.size());
-
-  intersection_api->AttachShape(shape);
-  intersection_api->Commit();
 
   // PSO - ray cast depth output
   Program ray_depth_program = {};
   VkPipeline ray_depth_pipeline = {};
+  VkRenderPass render_pass = {};
   {
     VkAttachmentDescription color_attachment_desc = {};
-    color_attachment_desc.format = window.colorFormat();
+    color_attachment_desc.format = window->colorFormat();
     color_attachment_desc.samples = VK_SAMPLE_COUNT_1_BIT;
     color_attachment_desc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     color_attachment_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -592,7 +618,6 @@ int main()
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &color_attachment_ref;
 
-    VkRenderPass render_pass = {};
     {
       VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
       create_info.attachmentCount = 1;
@@ -624,12 +649,6 @@ int main()
       VKCHECK(vkCreateShaderModule(g_vulkan.device, &createInfo, nullptr, &depth_fs));
     }
 
-    VkPipelineCache pipeline_cache = {};
-    {
-      VkPipelineCacheCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
-      vkCreatePipelineCache(g_vulkan.device, &create_info, nullptr, &pipeline_cache);
-    }
-
     VkPipelineShaderStageCreateInfo stage_create_infos[2];
     // Vertex shader.
     stage_create_infos[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -650,9 +669,9 @@ int main()
     viewport.x = 0;
     viewport.y = 0;
     // TODO: resize?
-    const Extent window_extent = window.extent();
-    viewport.width = window_extent.width;
-    viewport.height = window_extent.height;
+    const Extent window_extent = window->extent();
+    viewport.width = float(window_extent.width);
+    viewport.height = float(window_extent.height);
 
     VkRect2D scissor = {};
     scissor.extent.width = window_extent.width;
@@ -734,8 +753,8 @@ int main()
 
     // Get descriptor set layouts from the shader bytecodes.
     // TODO: have to destroy the set layouts, so the vulkan handles need to be stored somewhere.
-    const auto quad_spirv = SPIRVBytecodeView((uint8_t*)quad_vert_spirv, sizeof(quad_vert_spirv));
-    const auto depth_spirv = SPIRVBytecodeView((uint8_t*)depth_frag_spirv, sizeof(depth_frag_spirv));
+    const auto quad_spirv = SPIRVBytecodeView((uint8_t *)quad_vert_spirv, sizeof(quad_vert_spirv));
+    const auto depth_spirv = SPIRVBytecodeView((uint8_t *)depth_frag_spirv, sizeof(depth_frag_spirv));
     auto desc_set_layouts = createDescriptorSetLayout({ quad_spirv, depth_spirv });
 
     // Pipeline layout
@@ -743,7 +762,7 @@ int main()
     VkPipelineLayout pipeline_layout = {};
     {
       VkPipelineLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-      create_info.setLayoutCount = desc_set_layouts.size();
+      create_info.setLayoutCount = uint32_t(desc_set_layouts.size());
       create_info.pSetLayouts = desc_set_layouts.data();
       create_info.pushConstantRangeCount = 0;
       create_info.pPushConstantRanges = nullptr;
@@ -760,7 +779,7 @@ int main()
     create_info.subpass = 0;
 
     // TODO: fix crash
-    //VKCHECK(vkCreateGraphicsPipelines(
+    // VKCHECK(vkCreateGraphicsPipelines(
     //  g_vulkan.device, pipeline_cache, 1, &create_info, nullptr, &ray_depth_pipeline));
 
     ray_depth_program.shaders.push_back(quad_vs);
@@ -769,12 +788,23 @@ int main()
     ray_depth_program.desc_set_layouts = desc_set_layouts;
   }
 
-  while (!window.shouldClose()) {
+  // Save pipeline cache data.
+  {
+    size_t data_size = 0;
+    VKCHECK(vkGetPipelineCacheData(g_vulkan.device, g_vulkan.pipeline_cache, &data_size, nullptr));
+    std::vector<char> cache(data_size);
+    VKCHECK(vkGetPipelineCacheData(g_vulkan.device, g_vulkan.pipeline_cache, &data_size, cache.data()));
+    std::ofstream cache_file(kPipelineCacheFileName);
+    cache_file.write(cache.data(), cache.size());
+    cache_file.close();
+  }
+
+  while (!window->shouldClose()) {
     glfwPollEvents();
 
     const auto &imgui_io = ImGui::GetIO();
     auto delta_time = imgui_io.DeltaTime;
-    window.tick(delta_time);
+    window->tick(delta_time);
 
     // Frame start.
     ImGui_ImplVulkan_NewFrame();
@@ -787,10 +817,16 @@ int main()
 
     // Render.
     ImGui::Render();
-    window.render();
+    window->render();
   }
 
+  intersection_api.reset();
+
+  vkDestroyPipelineCache(g_vulkan.device, g_vulkan.pipeline_cache, nullptr);
+  vkDestroyRenderPass(g_vulkan.device, render_pass, nullptr);
   destroyProgram(ray_depth_program);
+  window.reset();
+  CleanupVulkan();
 
   return 0;
 }
@@ -807,8 +843,7 @@ static void SetupVulkan(const char **extensions, uint32_t extensions_count)
     create_info.ppEnabledExtensionNames = extensions;
 
 #ifdef IMGUI_VULKAN_DEBUG_REPORT
-    // Enabling multiple validation layers grouped as LunarG standard validation
-    const char *layers[] = { "VK_LAYER_LUNARG_standard_validation" };
+    const char *layers[] = { "VK_LAYER_KHRONOS_validation" };
     create_info.enabledLayerCount = 1;
     create_info.ppEnabledLayerNames = layers;
 

@@ -96,7 +96,7 @@ add_spirv_shader_lib(imgui_shaders
     ${GLFW_VULKAN_DIR}/glsl_shader.vert
     ${GLFW_VULKAN_DIR}/glsl_shader.frag
   OUTPUT
-    shaders/imgui
+    ${PROJECT_BINARY_DIR}/shaders/imgui
 )
 add_dependencies(windowlib imgui_shaders)
 
