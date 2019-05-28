@@ -130,14 +130,24 @@ class Window {
     FramePresent(wd);
   }
 
-  Extent extent() const
+  template <typename ExtentType = Extent>
+  ExtentType extent() const
   {
-    Extent res;
-    glfwGetWindowSize(window_.get(), &res.width, &res.height);
+    int width = 0, height = 0;
+    glfwGetWindowSize(window_.get(), &width, &height);
+    ExtentType res = {};
+    res.width = width;
+    res.height = height;
     return res;
   }
 
   VkFormat colorFormat() const { return window_data_.imgui_data.SurfaceFormat.format; }
+
+  VkFramebuffer currentFramebuffer() const
+  {
+    auto &wd = window_data_.imgui_data;
+    return wd.Framebuffer[wd.FrameIndex];
+  }
 
  private:
   GLFWwindowPtr window_;
@@ -850,13 +860,32 @@ int main()
       VKCHECK(vkBeginCommandBuffer(command_buffer, &begin_info));
     }
 
-    // TODO
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_depth_pipeline);
+
+    {
+      VkClearValue clear_values[1] = {};
+      clear_values[0].color = { 10.f / 255.f, 10.f / 255.f, 10.f / 255.f, 1 };
+
+      VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+      begin_info.renderPass = render_pass;
+      begin_info.framebuffer = window->currentFramebuffer();
+      begin_info.renderArea.extent = window->extent<VkExtent2D>();
+      begin_info.clearValueCount = ARRAYSIZE(clear_values);
+      begin_info.pClearValues = clear_values;
+
+      vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    }
+
+    // TODO: render pass
+
+    vkCmdEndRenderPass(command_buffer);
 
     VKCHECK(vkEndCommandBuffer(command_buffer));
   }
 
   intersection_api.reset();
 
+  vkDestroyCommandPool(g_vulkan.device, command_pool, nullptr);
   vkDestroyPipelineCache(g_vulkan.device, g_vulkan.pipeline_cache, nullptr);
   vkDestroyRenderPass(g_vulkan.device, render_pass, nullptr);
   destroyProgram(ray_depth_program);
