@@ -75,10 +75,10 @@ target_include_directories(imgui SYSTEM PUBLIC external/imgui)
 
 # windowlib
 add_library(windowlib STATIC
-  external/imgui/examples/imgui_impl_glfw.h
-  external/imgui/examples/imgui_impl_glfw.cpp
-  external/imgui/examples/imgui_impl_vulkan.h
-  external/imgui/examples/imgui_impl_vulkan.cpp
+  ui/imgui_impl_glfw.h
+  ui/imgui_impl_glfw.cpp
+  ui/imgui_impl_vulkan.h
+  ui/imgui_impl_vulkan.cpp
   glad/src/glad.c
 )
 target_link_libraries(windowlib imgui glfw Vulkan::Vulkan)
