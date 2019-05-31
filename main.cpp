@@ -126,6 +126,7 @@ class Window {
   GLFWwindow *getGLFWwindow() const { return window_.get(); }
   bool shouldClose() const { return glfwWindowShouldClose(window_.get()); }
   void tick(double delta_time);
+  ImVec4 getBackgroudColor() const;
   void setBackgroudColor(const ImVec4 &color);
 
   FrameStartData frameStart() { return FrameRenderStart(&window_data_.imgui_data); }
@@ -144,6 +145,12 @@ class Window {
   }
 
   VkFormat colorFormat() const { return window_data_.imgui_data.SurfaceFormat.format; }
+
+  ImGui_ImplVulkanH_FrameData &currentFrameVulkanData()
+  {
+    auto &wd = window_data_.imgui_data;
+    return wd.Frames[wd.FrameIndex];
+  }
 
   VkFramebuffer currentFramebuffer() const
   {
@@ -184,7 +191,7 @@ Window::Window(int width, int height)
     wd->Surface = surface;
 
     // TODO: Perform the clear ourselves.
-    // wd->ClearEnable = false;
+    wd->ClearEnable = false;
 
     // Check for WSI support
     VkBool32 res;
@@ -384,6 +391,13 @@ void Window::tick(double delta_time)
   camera_controller_.tick(delta_time);
 }
 
+
+ImVec4 Window::getBackgroudColor() const
+{
+  ImVec4 res = {};
+  memcpy(&res, &window_data_.imgui_data.ClearValue.color.float32[0], 4 * sizeof(float));
+  return res;
+}
 void Window::setBackgroudColor(const ImVec4 &color)
 {
   memcpy(&window_data_.imgui_data.ClearValue.color.float32[0], &color, 4 * sizeof(float));
@@ -429,7 +443,7 @@ createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
       if (!inserted) {
         // This binding slot is already taken. Just assert if the types match. Linking should take
         // care of other mismatches.
-        assert(binding.descriptor_type == it->second.descriptor_type);
+        assert(binding.descriptor_type == it->second.p_binding->descriptor_type);
       }
       it->second.stage_flags |= shader.shader_stage;
     }
@@ -589,6 +603,7 @@ int main()
   // Use surface area heuristic for better intersection performance (but slower scene build time).
   intersection_api->SetOption("bvh.builder", "sah");
 
+#if 0
   // Load test geometry.
   {
     tinyobj::attrib_t attrib;
@@ -616,40 +631,13 @@ int main()
     intersection_api->AttachShape(shape);
     intersection_api->Commit();
   }
+#endif
 
   // PSO - ray cast depth output
   Program ray_depth_program = {};
   VkPipeline ray_depth_pipeline = {};
   VkRenderPass render_pass = {};
   {
-    VkAttachmentDescription color_attachment_desc = {};
-    color_attachment_desc.format = window->colorFormat();
-    color_attachment_desc.samples = VK_SAMPLE_COUNT_1_BIT;
-    color_attachment_desc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    color_attachment_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color_attachment_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    color_attachment_desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    color_attachment_desc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment_desc.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference color_attachment_ref = { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
-
-    VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &color_attachment_ref;
-
-    {
-      VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
-      create_info.attachmentCount = 1;
-      create_info.pAttachments = &color_attachment_desc;
-      create_info.subpassCount = 1;
-      create_info.pSubpasses = &subpass;
-      create_info.dependencyCount = 0;
-      create_info.pDependencies = nullptr;
-      vkCreateRenderPass(g_vulkan.device, &create_info, nullptr, &render_pass);
-    }
-
     // Quad vertex shader.
     VkShaderModule quad_vs = {};
     {
@@ -786,6 +774,35 @@ int main()
       vkCreatePipelineLayout(g_vulkan.device, &create_info, nullptr, &pipeline_layout);
     }
 
+    {
+      VkAttachmentDescription color_attachment_desc = {};
+      color_attachment_desc.format = window->colorFormat();
+      color_attachment_desc.samples = VK_SAMPLE_COUNT_1_BIT;
+      color_attachment_desc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      color_attachment_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+      color_attachment_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      color_attachment_desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      color_attachment_desc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      color_attachment_desc.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+      VkAttachmentReference color_attachment_ref = { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+
+      VkSubpassDescription subpass = {};
+      subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+      subpass.colorAttachmentCount = 1;
+      subpass.pColorAttachments = &color_attachment_ref;
+
+      VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
+      create_info.attachmentCount = 1;
+      create_info.pAttachments = &color_attachment_desc;
+      create_info.subpassCount = 1;
+      create_info.pSubpasses = &subpass;
+      create_info.dependencyCount = 0;
+      create_info.pDependencies = nullptr;
+      vkCreateRenderPass(g_vulkan.device, &create_info, nullptr, &render_pass);
+    }
+
+
     VkGraphicsPipelineCreateInfo create_info = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
     create_info.stageCount = 2;
     create_info.pStages = stage_create_infos;
@@ -878,7 +895,14 @@ int main()
 
     {
       VkClearValue clear_values[1] = {};
-      clear_values[0].color = { 10.f / 255.f, 10.f / 255.f, 10.f / 255.f, 1 };
+      {
+        auto &color = clear_values[0].color;
+        const auto bgcolor = window->getBackgroudColor();
+        color.float32[0] = bgcolor.x;
+        color.float32[1] = bgcolor.y;
+        color.float32[2] = bgcolor.z;
+        color.float32[3] = bgcolor.w;
+      }
 
       VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
       begin_info.renderPass = render_pass;
@@ -897,26 +921,6 @@ int main()
     vkCmdDraw(command_buffer, 4, 1, 0, 0);
 
     vkCmdEndRenderPass(command_buffer);
-
-    // TODO: when the UI is not drawn this barrier will transition the image layout to present_src
-#ifdef HIDE_UI
-    {
-      VkImageMemoryBarrier present_barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-      present_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      present_barrier.dstAccessMask = 0;
-      present_barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-      present_barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-      present_barrier.srcQueueFamilyIndex = g_vulkan.queue_family;
-      present_barrier.dstQueueFamilyIndex = g_vulkan.queue_family;
-      present_barrier.image = window->currentFrameImage();
-      present_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-      present_barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-      present_barrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-      vkCmdPipelineBarrier(
-        command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &present_barrier);
-    }
-#endif
 
     VKCHECK(vkEndCommandBuffer(command_buffer));
 
@@ -938,9 +942,7 @@ int main()
     // TODO: use semaphores
     vkDeviceWaitIdle(g_vulkan.device);
 
-#ifndef HIDE_UI
     window->renderUI();
-#endif
     window->present();
   }
 
@@ -1148,12 +1150,8 @@ static void FrameRenderUI(ImGui_ImplVulkanH_WindowData *wd)
   // Submit command buffer
   vkCmdEndRenderPass(fd->CommandBuffer);
   {
-    // VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    // info.waitSemaphoreCount = 1;
-    // info.pWaitSemaphores = &image_acquired_semaphore;
-    // info.pWaitDstStageMask = &wait_stage;
     info.waitSemaphoreCount = 0;
     info.pWaitSemaphores = nullptr;
     info.pWaitDstStageMask = nullptr;
