@@ -105,8 +105,13 @@ struct GLFWwindowDeleter {
 };
 using GLFWwindowPtr = std::unique_ptr<GLFWwindow, GLFWwindowDeleter>;
 
+struct FrameStartData {
+  VkSemaphore *p_image_acquire_semaphore;
+};
+
 static void FramePresent(ImGui_ImplVulkanH_WindowData *wd);
-static void FrameRender(ImGui_ImplVulkanH_WindowData *wd);
+static FrameStartData FrameRenderStart(ImGui_ImplVulkanH_WindowData *wd);
+static void FrameRenderUI(ImGui_ImplVulkanH_WindowData *wd);
 
 struct Extent {
   int width;
@@ -123,12 +128,9 @@ class Window {
   void tick(double delta_time);
   void setBackgroudColor(const ImVec4 &color);
 
-  void render()
-  {
-    auto wd = &window_data_.imgui_data;
-    FrameRender(wd);
-    FramePresent(wd);
-  }
+  FrameStartData frameStart() { return FrameRenderStart(&window_data_.imgui_data); }
+  void renderUI() { FrameRenderUI(&window_data_.imgui_data); }
+  void present() { FramePresent(&window_data_.imgui_data); }
 
   template <typename ExtentType = Extent>
   ExtentType extent() const
@@ -147,6 +149,12 @@ class Window {
   {
     auto &wd = window_data_.imgui_data;
     return wd.Framebuffer[wd.FrameIndex];
+  }
+
+  VkImage &currentFrameImage()
+  {
+    auto &wd = window_data_.imgui_data;
+    return wd.BackBuffer[wd.Frames[wd.FrameIndex].BackbufferIndex];
   }
 
  private:
@@ -174,6 +182,9 @@ Window::Window(int width, int height)
   {
     auto wd = &window_data_.imgui_data;
     wd->Surface = surface;
+
+    // TODO: Perform the clear ourselves.
+    // wd->ClearEnable = false;
 
     // Check for WSI support
     VkBool32 res;
@@ -618,7 +629,7 @@ int main()
     color_attachment_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     color_attachment_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     color_attachment_desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    color_attachment_desc.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    color_attachment_desc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     color_attachment_desc.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentReference color_attachment_ref = { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
@@ -638,8 +649,6 @@ int main()
       create_info.pDependencies = nullptr;
       vkCreateRenderPass(g_vulkan.device, &create_info, nullptr, &render_pass);
     }
-
-    // TODO: have to destroy the shaders modules, so the vulkan handles need to be stored somewhere.
 
     // Quad vertex shader.
     VkShaderModule quad_vs = {};
@@ -762,13 +771,11 @@ int main()
     dynamic_state.pDynamicStates = nullptr;
 
     // Get descriptor set layouts from the shader bytecodes.
-    // TODO: have to destroy the set layouts, so the vulkan handles need to be stored somewhere.
     const auto quad_spirv = SPIRVBytecodeView((uint8_t *)quad_vert_spirv, sizeof(quad_vert_spirv));
     const auto depth_spirv = SPIRVBytecodeView((uint8_t *)depth_frag_spirv, sizeof(depth_frag_spirv));
     auto desc_set_layouts = createDescriptorSetLayout({ quad_spirv, depth_spirv });
 
     // Pipeline layout
-    // TODO: have to destroy the pipeline layouts so the vulkan handle need to be stored somewhere.
     VkPipelineLayout pipeline_layout = {};
     {
       VkPipelineLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
@@ -835,22 +842,29 @@ int main()
   while (!window->shouldClose()) {
     glfwPollEvents();
 
-    const auto &imgui_io = ImGui::GetIO();
-    auto delta_time = imgui_io.DeltaTime;
-    window->tick(delta_time);
-
-    // Frame start.
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    // UI.
-    bool open = true;
-    ImGui::ShowDemoWindow(&open);
+    // Update state from user input.
+    {
+      const auto &imgui_io = ImGui::GetIO();
+      auto delta_time = imgui_io.DeltaTime;
+      window->tick(delta_time);
+    }
+
+    // UI
+    {
+      // UI logic
+      bool open = true;
+      ImGui::ShowDemoWindow(&open);
+
+      // Render UI to memory buffers (agnostic to graphics API).
+      ImGui::Render();
+    }
 
     // Render.
-    ImGui::Render();
-    window->render();
+    auto frame_start_data = window->frameStart();
 
     VKCHECK(vkResetCommandPool(g_vulkan.device, command_pool, 0));
     {
@@ -878,9 +892,56 @@ int main()
 
     // TODO: render pass
 
+    // TODO: set scissor and viewport dynamically once window resize is supported
+
+    vkCmdDraw(command_buffer, 4, 1, 0, 0);
+
     vkCmdEndRenderPass(command_buffer);
 
+    // TODO: when the UI is not drawn this barrier will transition the image layout to present_src
+#ifdef HIDE_UI
+    {
+      VkImageMemoryBarrier present_barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+      present_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      present_barrier.dstAccessMask = 0;
+      present_barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      present_barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      present_barrier.srcQueueFamilyIndex = g_vulkan.queue_family;
+      present_barrier.dstQueueFamilyIndex = g_vulkan.queue_family;
+      present_barrier.image = window->currentFrameImage();
+      present_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      present_barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+      present_barrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+      vkCmdPipelineBarrier(
+        command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &present_barrier);
+    }
+#endif
+
     VKCHECK(vkEndCommandBuffer(command_buffer));
+
+    VkPipelineStageFlags image_acquire_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSubmitInfo submit_info = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = frame_start_data.p_image_acquire_semaphore;
+    submit_info.pWaitDstStageMask = &image_acquire_stage;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer;
+    submit_info.signalSemaphoreCount = 0;
+    submit_info.pSignalSemaphores = nullptr;
+
+    // TODO: use semaphores
+    vkDeviceWaitIdle(g_vulkan.device);
+
+    VKCHECK(vkQueueSubmit(g_vulkan.queue, 1, &submit_info, VK_NULL_HANDLE));
+
+    // TODO: use semaphores
+    vkDeviceWaitIdle(g_vulkan.device);
+
+#ifndef HIDE_UI
+    window->renderUI();
+#endif
+    window->present();
   }
 
   intersection_api.reset();
@@ -1041,34 +1102,33 @@ static void CleanupVulkan()
   vkDestroyInstance(g_vulkan.instance, g_vulkan.allocator);
 }
 
-static void FrameRender(ImGui_ImplVulkanH_WindowData *wd)
+static FrameStartData FrameRenderStart(ImGui_ImplVulkanH_WindowData *wd)
 {
-  VkResult err;
-
   VkSemaphore &image_acquired_semaphore = wd->Frames[wd->FrameIndex].ImageAcquiredSemaphore;
-  err = vkAcquireNextImageKHR(
+  VKCHECK(vkAcquireNextImageKHR(
     g_vulkan.device, wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE,
-    &wd->FrameIndex);
-  VKCHECK(err);
+    &wd->FrameIndex));
 
   ImGui_ImplVulkanH_FrameData *fd = &wd->Frames[wd->FrameIndex];
-  {
-    err =
-      vkWaitForFences(g_vulkan.device, 1, &fd->Fence, VK_TRUE, UINT64_MAX); // wait indefinitely instead
-                                                                            // of periodically checking
-    VKCHECK(err);
 
-    err = vkResetFences(g_vulkan.device, 1, &fd->Fence);
-    VKCHECK(err);
-  }
+  // wait indefinitely instead of periodically checking
+  VKCHECK(vkWaitForFences(g_vulkan.device, 1, &fd->Fence, VK_TRUE, UINT64_MAX));
+  VKCHECK(vkResetFences(g_vulkan.device, 1, &fd->Fence));
+  VKCHECK(vkResetCommandPool(g_vulkan.device, fd->CommandPool, 0));
+
+  return { &image_acquired_semaphore };
+}
+
+// TODO: pass in wait semaphore list?
+static void FrameRenderUI(ImGui_ImplVulkanH_WindowData *wd)
+{
+  ImGui_ImplVulkanH_FrameData *fd = &wd->Frames[wd->FrameIndex];
+
   {
-    err = vkResetCommandPool(g_vulkan.device, fd->CommandPool, 0);
-    VKCHECK(err);
     VkCommandBufferBeginInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    err = vkBeginCommandBuffer(fd->CommandBuffer, &info);
-    VKCHECK(err);
+    VKCHECK(vkBeginCommandBuffer(fd->CommandBuffer, &info));
   }
   {
     VkRenderPassBeginInfo info = {};
@@ -1088,21 +1148,22 @@ static void FrameRender(ImGui_ImplVulkanH_WindowData *wd)
   // Submit command buffer
   vkCmdEndRenderPass(fd->CommandBuffer);
   {
-    VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    // VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    info.waitSemaphoreCount = 1;
-    info.pWaitSemaphores = &image_acquired_semaphore;
-    info.pWaitDstStageMask = &wait_stage;
+    // info.waitSemaphoreCount = 1;
+    // info.pWaitSemaphores = &image_acquired_semaphore;
+    // info.pWaitDstStageMask = &wait_stage;
+    info.waitSemaphoreCount = 0;
+    info.pWaitSemaphores = nullptr;
+    info.pWaitDstStageMask = nullptr;
     info.commandBufferCount = 1;
     info.pCommandBuffers = &fd->CommandBuffer;
     info.signalSemaphoreCount = 1;
     info.pSignalSemaphores = &fd->RenderCompleteSemaphore;
 
-    err = vkEndCommandBuffer(fd->CommandBuffer);
-    VKCHECK(err);
-    err = vkQueueSubmit(g_vulkan.queue, 1, &info, fd->Fence);
-    VKCHECK(err);
+    VKCHECK(vkEndCommandBuffer(fd->CommandBuffer));
+    VKCHECK(vkQueueSubmit(g_vulkan.queue, 1, &info, fd->Fence));
   }
 }
 
@@ -1116,6 +1177,5 @@ static void FramePresent(ImGui_ImplVulkanH_WindowData *wd)
   info.swapchainCount = 1;
   info.pSwapchains = &wd->Swapchain;
   info.pImageIndices = &wd->FrameIndex;
-  VkResult err = vkQueuePresentKHR(g_vulkan.queue, &info);
-  VKCHECK(err);
+  VKCHECK(vkQueuePresentKHR(g_vulkan.queue, &info));
 }

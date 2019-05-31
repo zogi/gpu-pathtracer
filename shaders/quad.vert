@@ -7,5 +7,6 @@ vec2 verts[] = { vec2(-1, -1), vec2(-1, 1), vec2(1, -1), vec2(1, 1) };
 
 void main()
 {
-  gl_Position = vec4(verts[gl_VertexIndex], 1, 1);
+  // TODO: remove this: multiply by 0.8 to see the quad for now.
+  gl_Position = vec4(verts[gl_VertexIndex] * 0.8, 1, 1);
 }
