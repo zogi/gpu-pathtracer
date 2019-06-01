@@ -838,24 +838,6 @@ int main()
     cache_file.close();
   }
 
-  // Create command buffer pool and command buffer.
-  VkCommandPool command_pool = {};
-  VkCommandBuffer command_buffer = {};
-  {
-    VkCommandPoolCreateInfo create_info = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
-    // This means command buffers are short-lived. TODO: revisit later
-    create_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    create_info.queueFamilyIndex = g_vulkan.queue_family;
-    VKCHECK(vkCreateCommandPool(g_vulkan.device, &create_info, nullptr, &command_pool));
-  }
-  {
-    VkCommandBufferAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-    allocate_info.commandPool = command_pool;
-    allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocate_info.commandBufferCount = 1;
-    VKCHECK(vkAllocateCommandBuffers(g_vulkan.device, &allocate_info, &command_buffer));
-  }
-
   while (!window->shouldClose()) {
     glfwPollEvents();
 
@@ -883,7 +865,15 @@ int main()
     // Render.
     auto frame_start_data = window->frameStart();
 
-    VKCHECK(vkResetCommandPool(g_vulkan.device, command_pool, 0));
+    VkCommandBuffer command_buffer = {};
+    {
+      VkCommandBufferAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+      allocate_info.commandPool = window->currentFrameVulkanData().CommandPool;
+      allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      allocate_info.commandBufferCount = 1;
+      VKCHECK(vkAllocateCommandBuffers(g_vulkan.device, &allocate_info, &command_buffer));
+    }
+
     {
       VkCommandBufferBeginInfo begin_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
       // TODO: revisit later
@@ -914,8 +904,6 @@ int main()
       vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
     }
 
-    // TODO: render pass
-
     // TODO: set scissor and viewport dynamically once window resize is supported
 
     vkCmdDraw(command_buffer, 4, 1, 0, 0);
@@ -934,21 +922,16 @@ int main()
     submit_info.signalSemaphoreCount = 0;
     submit_info.pSignalSemaphores = nullptr;
 
-    // TODO: use semaphores
-    vkDeviceWaitIdle(g_vulkan.device);
-
     VKCHECK(vkQueueSubmit(g_vulkan.queue, 1, &submit_info, VK_NULL_HANDLE));
-
-    // TODO: use semaphores
-    vkDeviceWaitIdle(g_vulkan.device);
 
     window->renderUI();
     window->present();
   }
 
+  vkDeviceWaitIdle(g_vulkan.device);
+
   intersection_api.reset();
 
-  vkDestroyCommandPool(g_vulkan.device, command_pool, nullptr);
   vkDestroyPipelineCache(g_vulkan.device, g_vulkan.pipeline_cache, nullptr);
   vkDestroyRenderPass(g_vulkan.device, render_pass, nullptr);
   destroyProgram(ray_depth_program);
