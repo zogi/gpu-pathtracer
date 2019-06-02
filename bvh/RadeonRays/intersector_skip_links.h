@@ -30,7 +30,7 @@ THE SOFTWARE.
     http://www.cse.chalmers.se/edu/year/2016/course/course/TDA361/EfficiencyIssuesForRayTracing.pdf
 
     Intersector is using binary BVH with a single bounding box per node. BVH layout guarantees
-    that left child of an internal node lies right next to it in memory. Each BVH node has a 
+    that left child of an internal node lies right next to it in memory. Each BVH node has a
     skip link to the node traversed next. The traversal pseude code is
 
         while(addr is valid)
@@ -57,44 +57,52 @@ THE SOFTWARE.
         -Travesal order is fixed, so poor algorithmic characteristics.
         -Does not benefit from BVH quality optimizations.
  */
- 
+
 #pragma once
 #include "calc.h"
 #include "device.h"
 #include "intersector.h"
 #include <memory>
 
-namespace RadeonRays
-{
-    class Bvh;
+namespace RadeonRays {
+class Bvh;
 
-    /** 
-    \brief Intersector implementation using skip links BVH
-    */
-    class IntersectorSkipLinks : public Intersector
-    {
-    public:
-        // Constructor
-        IntersectorSkipLinks(Calc::Device* device);
+/**
+\brief Intersector implementation using skip links BVH
+*/
+class IntersectorSkipLinks : public Intersector {
+ public:
+  // Constructor
+  IntersectorSkipLinks(Calc::Device *device);
 
-    private:
-        // Preprocess implementation
-        void Process(World const& world) override;
-        // Intersection implementation
-        void Intersect(std::uint32_t queue_idx, Calc::Buffer const *rays, Calc::Buffer const *num_rays, 
-            std::uint32_t max_rays, Calc::Buffer *hits, 
-            Calc::Event const *wait_event, Calc::Event **event) const override;
-        // Occulusion implementation
-        void Occluded(std::uint32_t queue_idx, Calc::Buffer const *rays, Calc::Buffer const *num_rays, 
-            std::uint32_t max_rays, Calc::Buffer *hits, 
-            Calc::Event const *wait_event, Calc::Event **event) const override;
+ private:
+  // Preprocess implementation
+  void Process(World const &world) override;
+  // Intersection implementation
+  void Intersect(
+    std::uint32_t queue_idx,
+    Calc::Buffer const *rays,
+    Calc::Buffer const *num_rays,
+    std::uint32_t max_rays,
+    Calc::Buffer *hits,
+    Calc::Event const *wait_event,
+    Calc::Event **event) const override;
+  // Occulusion implementation
+  void Occluded(
+    std::uint32_t queue_idx,
+    Calc::Buffer const *rays,
+    Calc::Buffer const *num_rays,
+    std::uint32_t max_rays,
+    Calc::Buffer *hits,
+    Calc::Event const *wait_event,
+    Calc::Event **event) const override;
 
-    private:
-        struct GpuData;
+ private:
+  struct GpuData;
 
-        // Implementation data
-        std::unique_ptr<GpuData> m_gpudata;
-        // Bvh data structure
-        std::unique_ptr<Bvh> m_bvh;
-    };
-}
+  // Implementation data
+  std::unique_ptr<GpuData> m_gpudata;
+  // Bvh data structure
+  std::unique_ptr<Bvh> m_bvh;
+};
+} // namespace RadeonRays
