@@ -56,53 +56,69 @@ THE SOFTWARE.
     Cons:
         -Travesal order is fixed, so poor algorithmic characteristics.
         -Does not benefit from BVH quality optimizations.
+
+    ===
+    Modified to contain only the CPU BVH builder function.
  */
 
 #pragma once
-#include "calc.h"
-#include "device.h"
-#include "intersector.h"
+
 #include <memory>
+
+#include <gsl/span>
+
+#include "../translator/plain_bvh_translator.h"
+#include "math/float3.h"
 
 namespace RadeonRays {
 class Bvh;
+class World;
 
-/**
-\brief Intersector implementation using skip links BVH
-*/
-class IntersectorSkipLinks : public Intersector {
- public:
-  // Constructor
-  IntersectorSkipLinks(Calc::Device *device);
+using Node = PlainBvhTranslator::Node;
 
- private:
-  // Preprocess implementation
-  void Process(World const &world) override;
-  // Intersection implementation
-  void Intersect(
-    std::uint32_t queue_idx,
-    Calc::Buffer const *rays,
-    Calc::Buffer const *num_rays,
-    std::uint32_t max_rays,
-    Calc::Buffer *hits,
-    Calc::Event const *wait_event,
-    Calc::Event **event) const override;
-  // Occulusion implementation
-  void Occluded(
-    std::uint32_t queue_idx,
-    Calc::Buffer const *rays,
-    Calc::Buffer const *num_rays,
-    std::uint32_t max_rays,
-    Calc::Buffer *hits,
-    Calc::Event const *wait_event,
-    Calc::Event **event) const override;
+// Position
+using Vertex = float3;
 
- private:
-  struct GpuData;
-
-  // Implementation data
-  std::unique_ptr<GpuData> m_gpudata;
-  // Bvh data structure
-  std::unique_ptr<Bvh> m_bvh;
+struct Face {
+  // Up to 3 indices
+  int idx[3];
+  // Shape ID
+  int shape_id;
+  // Primitive ID
+  int prim_id;
 };
+
+class BvhBuilder {
+ public:
+  /// Build BVH from geometry in World.
+  /// @post get*Count and get*BufferSizeBytes will return an updated value after this call.
+  /// @param world World contaning geometry from which to build/update the bvh.
+  void updateBvh(const World &world);
+
+  int getNodeCount() const { return m_translator.nodecnt_; }
+  size_t getNodeBufferSizeBytes() const { return getNodeCount() * sizeof(Node); }
+  int getVertexCount() const { return m_numvertices; }
+  size_t getVertexBufferSizeBytes() const { return getVertexCount() * sizeof(Vertex); }
+  int getFaceCount() const { return m_numfaces; }
+  size_t getFaceBufferSizeBytes() const { return getFaceCount() * sizeof(Face); }
+
+  /// Write BVH buffer data to specified buffers.
+  /// @pre \ref updateBvh has been called successfully at least once.
+  /// @pre out_nodes.size() == getNodeCount()
+  /// @pre out_vertices.size() == getVertexCount()
+  /// @pre out_faces.size() == getFaceCount()
+  void getBuffers(gsl::span<Node> out_nodes, gsl::span<Vertex> out_vertices, gsl::span<Face> out_faces);
+
+ private:
+  std::unique_ptr<Bvh> m_bvh;
+  PlainBvhTranslator m_translator;
+  std::vector<Shape const *> m_shapes;
+  std::vector<int> m_mesh_vertices_start_idx;
+  std::vector<int> m_mesh_faces_start_idx;
+  int m_numvertices = 0;
+  int m_numfaces = 0;
+  int m_nummeshes = 0;
+  int m_numinstances = 0;
+};
+
 } // namespace RadeonRays
