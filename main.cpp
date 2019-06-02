@@ -585,6 +585,7 @@ int main()
   auto window = std::make_unique<Window>(1280, 720);
   window->setBackgroudColor(ImVec4(0.45f, 0.55f, 0.60f, 1.00f));
 
+#if 0
   // Init RadeonRays intersection API.
   IntersectionApiPtr intersection_api = []() {
     int device_idx = -1;
@@ -602,9 +603,11 @@ int main()
 
   // Use surface area heuristic for better intersection performance (but slower scene build time).
   intersection_api->SetOption("bvh.builder", "sah");
+#endif
 
-#if 0
   // Load test geometry.
+  RadeonRays::World world;
+  std::unique_ptr<RadeonRays::Shape> test_mesh;
   {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -624,14 +627,41 @@ int main()
 
     std::vector<int> numFaceVertices(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
 
-    RadeonRays::Shape *shape = intersection_api->CreateMesh(
+    test_mesh = std::make_unique<RadeonRays::Mesh>(
       attrib.vertices.data(), attrib.vertices.size() / 3, 3 * sizeof(float), indices.data(), 0,
       numFaceVertices.data(), numFaceVertices.size());
+    test_mesh->SetId(1);
 
-    intersection_api->AttachShape(shape);
-    intersection_api->Commit();
+    world.AttachShape(test_mesh.get());
+    world.OnCommit();
   }
-#endif
+
+  // Create BVH and upload it to GPU.
+  VkBuffer bvh_nodes_buffer;
+  VkBuffer vertices_buffer;
+  VkBuffer faces_buffer;
+  {
+    RadeonRays::BvhBuilder builder;
+    builder.updateBvh(world);
+
+    // Nodes.
+    gsl::span<RadeonRays::Node> nodes;
+    {
+      VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+      create_info.size = builder.getNodeBufferSizeBytes();
+      create_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+      VKCHECK(vkCreateBuffer(g_vulkan.device, &create_info, nullptr, &bvh_nodes_buffer));
+      // TODO: allocate and map memory
+      // nodes = ...
+    }
+
+    // TODO: vertices and faces
+    gsl::span<RadeonRays::Vertex> vertices;
+    gsl::span<RadeonRays::Face> faces;
+
+    // builder.fillBuffers(nodes, vertices, faces);
+  }
+
 
   // PSO - ray cast depth output
   Program ray_depth_program = {};
@@ -802,7 +832,6 @@ int main()
       vkCreateRenderPass(g_vulkan.device, &create_info, nullptr, &render_pass);
     }
 
-
     VkGraphicsPipelineCreateInfo create_info = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
     create_info.stageCount = 2;
     create_info.pStages = stage_create_infos;
@@ -930,7 +959,8 @@ int main()
 
   vkDeviceWaitIdle(g_vulkan.device);
 
-  intersection_api.reset();
+  // TODO: destroy other BVH resources as well.
+  vkDestroyBuffer(g_vulkan.device, bvh_nodes_buffer, nullptr);
 
   vkDestroyPipelineCache(g_vulkan.device, g_vulkan.pipeline_cache, nullptr);
   vkDestroyRenderPass(g_vulkan.device, render_pass, nullptr);

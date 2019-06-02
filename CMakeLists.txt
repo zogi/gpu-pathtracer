@@ -10,13 +10,6 @@ include(cmake/glslang.cmake)
 # Vulkan
 find_package(Vulkan REQUIRED)
 
-if (WIN32)
-  # Hack to make Anvil find vulkan-1.lib
-  add_library(vulkan-1.lib INTERFACE)
-  set_target_properties(vulkan-1.lib PROPERTIES
-    INTERFACE_LINK_LIBRARIES "${VULKAN_LIBRARY}")
-endif()
-
 # SPIRV-Reflect
 add_library(spirv_reflect STATIC
   external/SPIRV-Reflect/spirv_reflect.c
@@ -25,21 +18,50 @@ target_include_directories(spirv_reflect SYSTEM PUBLIC
   external/SPIRV-Reflect
 )
 
-# Radeon Rays
-option(RR_USE_VULKAN "" ON)
-option(RR_USE_OPENCL "" OFF)
-option(RR_USE_EMBREE "" OFF)
-option(RR_EMBED_KERNELS "" ON)
-option(RR_ALLOW_CPU_DEVICES "" OFF)
-option(RR_NO_TESTS "" ON)
-option(RR_ENABLE_STATIC "" ON)
-option(RR_SHARED_CALC "" OFF)
-option(RR_ENABLE_RAYMASK "" OFF)
-option(RR_ENABLE_BACKFACE_CULL "" OFF)
-add_subdirectory(external/RadeonRays_SDK)
-
 # GSL
 add_subdirectory(external/GSL)
+
+# CPU bvh builder parts of RadeonRays.
+# Files not under RADEONRAYS_ROOT are copied to this repo and may be modified.
+set(RADEONRAYS_ROOT external/RadeonRays_SDK/RadeonRays)
+add_library(RadeonRaysBVH STATIC
+  ${RADEONRAYS_ROOT}/include/radeon_rays.h
+  ${RADEONRAYS_ROOT}/include/math/bbox.h
+  ${RADEONRAYS_ROOT}/include/math/float2.h
+  ${RADEONRAYS_ROOT}/include/math/float3.h
+  ${RADEONRAYS_ROOT}/include/math/int2.h
+  ${RADEONRAYS_ROOT}/include/math/int3.h
+  ${RADEONRAYS_ROOT}/include/math/mathutils.h
+  ${RADEONRAYS_ROOT}/include/math/matrix.h
+  ${RADEONRAYS_ROOT}/include/math/quaternion.h
+  ${RADEONRAYS_ROOT}/include/math/ray.h
+  ${RADEONRAYS_ROOT}/include/math/ray.h
+  ${RADEONRAYS_ROOT}/src/api/radeon_rays_impl.cpp
+  ${RADEONRAYS_ROOT}/src/accelerator/bvh.h
+  ${RADEONRAYS_ROOT}/src/accelerator/bvh.cpp
+  ${RADEONRAYS_ROOT}/src/accelerator/split_bvh.h
+  ${RADEONRAYS_ROOT}/src/accelerator/split_bvh.cpp
+  ${RADEONRAYS_ROOT}/src/except/except.h
+  ${RADEONRAYS_ROOT}/src/primitive/instance.h
+  ${RADEONRAYS_ROOT}/src/primitive/mesh.h
+  ${RADEONRAYS_ROOT}/src/primitive/mesh.cpp
+  ${RADEONRAYS_ROOT}/src/primitive/shapeimpl.h
+  ${RADEONRAYS_ROOT}/src/translator/plain_bvh_translator.h
+  ${RADEONRAYS_ROOT}/src/translator/plain_bvh_translator.cpp
+  ${RADEONRAYS_ROOT}/src/util/options.h
+  ${RADEONRAYS_ROOT}/src/util/options.cpp
+  ${RADEONRAYS_ROOT}/src/world/world.h
+  ${RADEONRAYS_ROOT}/src/world/world.cpp
+  bvh/RadeonRays/intersector_skip_links.h
+  bvh/RadeonRays/intersector_skip_links.cpp
+)
+target_compile_definitions(RadeonRaysBVH PUBLIC RR_STATIC_LIBRARY)
+target_include_directories(RadeonRaysBVH PUBLIC
+  ${RADEONRAYS_ROOT}/include
+  ${RADEONRAYS_ROOT}/src
+  bvh
+)
+target_link_libraries(RadeonRaysBVH GSL)
 
 # stb
 add_library(stb INTERFACE)
@@ -130,5 +152,5 @@ target_include_directories(GpuPathTracer PRIVATE
   ${PROJECT_BINARY_DIR}/include
 )
 target_link_libraries(GpuPathTracer
-  RadeonRays Anvil stb tinyobjloader windowlib glm spirv_reflect GSL
+  RadeonRaysBVH stb tinyobjloader windowlib glm spirv_reflect GSL
 )

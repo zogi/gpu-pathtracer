@@ -21,11 +21,11 @@ THE SOFTWARE.
 ********************************************************************/
 #include "intersector_skip_links.h"
 
-#include "../accelerator/bvh.h"
-#include "../accelerator/split_bvh.h"
-#include "../primitive/instance.h"
-#include "../primitive/mesh.h"
-#include "../world/world.h"
+#include "accelerator/bvh.h"
+#include "accelerator/split_bvh.h"
+#include "primitive/instance.h"
+#include "primitive/mesh.h"
+#include "world/world.h"
 
 #include <algorithm>
 
@@ -153,7 +153,7 @@ void BvhBuilder::updateBvh(const World &world)
 }
 
 
-void BvhBuilder::getBuffers(gsl::span<Node> out_nodes, gsl::span<float3> out_vertices, gsl::span<Face> out_faces)
+void BvhBuilder::fillBuffers(gsl::span<Node> out_nodes, gsl::span<float3> out_vertices, gsl::span<Face> out_faces)
 {
   assert(out_nodes.size() == getNodeCount());
   assert(out_vertices.size() == getVertexCount());

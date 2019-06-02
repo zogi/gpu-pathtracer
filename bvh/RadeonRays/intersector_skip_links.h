@@ -67,8 +67,8 @@ THE SOFTWARE.
 
 #include <gsl/span>
 
-#include "../translator/plain_bvh_translator.h"
 #include "math/float3.h"
+#include "translator/plain_bvh_translator.h"
 
 namespace RadeonRays {
 class Bvh;
@@ -107,7 +107,8 @@ class BvhBuilder {
   /// @pre out_nodes.size() == getNodeCount()
   /// @pre out_vertices.size() == getVertexCount()
   /// @pre out_faces.size() == getFaceCount()
-  void getBuffers(gsl::span<Node> out_nodes, gsl::span<Vertex> out_vertices, gsl::span<Face> out_faces);
+  void
+  fillBuffers(gsl::span<Node> out_nodes, gsl::span<Vertex> out_vertices, gsl::span<Face> out_faces);
 
  private:
   std::unique_ptr<Bvh> m_bvh;

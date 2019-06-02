@@ -36,7 +36,7 @@
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
 
-#include <radeon_rays.h>
+#include <bvh_builder.h>
 
 #ifndef ARRAYSIZE
 #define ARRAYSIZE(array) (sizeof(array) / sizeof((array)[0]))
