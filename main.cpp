@@ -561,15 +561,169 @@ void destroyProgram(const Program &program)
   }
 }
 
+int32_t getVulkanMemoryType(VkMemoryRequirements reqs, VkMemoryPropertyFlags flags)
+{
+  VkPhysicalDeviceMemoryProperties props = {};
+  vkGetPhysicalDeviceMemoryProperties(g_vulkan.physical_device, &props);
+  for (uint32_t i = 0; i < props.memoryTypeCount; ++i) {
+    const auto mem_flags = props.memoryTypes[i].propertyFlags;
+    if (((1 << i) & reqs.memoryTypeBits) && (mem_flags & flags) == flags) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+struct GPUBuffer {
+  VkBuffer buffer;
+  VkDeviceMemory memory;
+  size_t size;
+};
+
+GPUBuffer
+createGPUBuffer(size_t size, VkBufferUsageFlags buffer_flags, VkMemoryPropertyFlags memory_flags)
+{
+  GPUBuffer res = {};
+
+  VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+  create_info.size = size;
+  create_info.usage = buffer_flags;
+  VKCHECK(vkCreateBuffer(g_vulkan.device, &create_info, nullptr, &res.buffer));
+
+  VkMemoryRequirements mem_reqs = {};
+  vkGetBufferMemoryRequirements(g_vulkan.device, res.buffer, &mem_reqs);
+  const auto memory_type = getVulkanMemoryType(mem_reqs, memory_flags);
+  assert(memory_type != -1);
+
+  VkMemoryAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+  allocate_info.allocationSize = mem_reqs.size;
+  allocate_info.memoryTypeIndex = memory_type;
+  VKCHECK(vkAllocateMemory(g_vulkan.device, &allocate_info, nullptr, &res.memory));
+
+  VKCHECK(vkBindBufferMemory(g_vulkan.device, res.buffer, res.memory, 0));
+
+  res.size = size;
+  return res;
+}
+
+void destroyGPUBuffer(const GPUBuffer &gpu_buffer)
+{
+  vkFreeMemory(g_vulkan.device, gpu_buffer.memory, nullptr);
+  vkDestroyBuffer(g_vulkan.device, gpu_buffer.buffer, nullptr);
+}
+
+class GPUBufferUploader {
+ public:
+  static GPUBufferUploader &instance()
+  {
+    static GPUBufferUploader s_instance;
+    return s_instance;
+  }
+
+  void init(size_t size)
+  {
+    m_staging = createGPUBuffer(
+      size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    {
+      VkCommandPoolCreateInfo create_info = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
+      create_info.flags =
+        VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+      create_info.queueFamilyIndex = g_vulkan.queue_family;
+      VKCHECK(vkCreateCommandPool(g_vulkan.device, &create_info, nullptr, &m_command_pool));
+    }
+
+    {
+      VkCommandBufferAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+      allocate_info.commandPool = m_command_pool;
+      allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      allocate_info.commandBufferCount = 1;
+      VKCHECK(vkAllocateCommandBuffers(g_vulkan.device, &allocate_info, &m_command_buffer));
+    }
+  }
+
+  void terminate()
+  {
+    destroyGPUBuffer(m_staging);
+    vkDestroyCommandPool(g_vulkan.device, m_command_pool, nullptr);
+  }
+
+  /// Blocks until transfer is complete.
+  template <typename CPUBuffer>
+  void uploadSync(const CPUBuffer &data, const GPUBuffer &dest_buffer)
+  {
+    uploadSync(data, dest_buffer.buffer);
+  }
+
+  /// Blocks until transfer is complete.
+  template <typename CPUBuffer>
+  void uploadSync(const CPUBuffer &data, VkBuffer dest_buffer)
+  {
+    assert(data.size() <= m_staging.size);
+    if (data.size() > m_staging.size) {
+      return;
+    }
+
+    void *ptr = nullptr;
+    VKCHECK(vkMapMemory(g_vulkan.device, m_staging.memory, 0, data.size(), 0, &ptr));
+    std::memcpy(ptr, data.data(), data.size());
+    vkUnmapMemory(g_vulkan.device, m_staging.memory);
+
+    VKCHECK(vkResetCommandBuffer(m_command_buffer, 0));
+
+    {
+      VkCommandBufferBeginInfo begin_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+      begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+      VKCHECK(vkBeginCommandBuffer(m_command_buffer, &begin_info));
+    }
+
+    {
+      VkBufferCopy region = {};
+      region.size = data.size();
+      vkCmdCopyBuffer(m_command_buffer, m_staging.buffer, dest_buffer, 1, &region);
+    }
+
+    {
+      VkBufferMemoryBarrier barrier = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+      barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+      barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      barrier.buffer = dest_buffer;
+      barrier.offset = 0;
+      barrier.size = VK_WHOLE_SIZE;
+      vkCmdPipelineBarrier(
+        m_command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &barrier, 0, nullptr);
+    }
+
+    VKCHECK(vkEndCommandBuffer(m_command_buffer));
+
+    {
+      VkSubmitInfo submit_info = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+      submit_info.commandBufferCount = 1;
+      submit_info.pCommandBuffers = &m_command_buffer;
+      VKCHECK(vkQueueSubmit(g_vulkan.queue, 1, &submit_info, VK_NULL_HANDLE));
+    }
+
+    VKCHECK(vkDeviceWaitIdle(g_vulkan.device));
+  }
+
+ private:
+  GPUBufferUploader() = default;
+
+  GPUBuffer m_staging = {};
+  VkCommandPool m_command_pool = VK_NULL_HANDLE;
+  VkCommandBuffer m_command_buffer = VK_NULL_HANDLE;
+  // TODO: command pool, command buffer
+};
+
 // === main ===
 
 int main()
 {
-  struct GLFWGuard {
-    GLFWGuard() { glfwInit(); }
-    ~GLFWGuard() { glfwTerminate(); }
-  } glfw_guard;
-
+  glfwInit();
   glfwSetErrorCallback(glfwErrorCallback);
 
   // Setup Vulkan
@@ -581,34 +735,18 @@ int main()
   const char **extensions = glfwGetRequiredInstanceExtensions(&extensions_count);
   SetupVulkan(extensions, extensions_count);
 
+  GPUBufferUploader::instance().init(32 * 1024 * 1024);
+
   // Init window.
   auto window = std::make_unique<Window>(1280, 720);
   window->setBackgroudColor(ImVec4(0.45f, 0.55f, 0.60f, 1.00f));
 
-#if 0
-  // Init RadeonRays intersection API.
-  IntersectionApiPtr intersection_api = []() {
-    int device_idx = -1;
-    for (auto idx = 0U; idx < IntersectionApi::GetDeviceCount(); ++idx) {
-      DeviceInfo devinfo;
-      IntersectionApi::GetDeviceInfo(idx, devinfo);
-
-      if (devinfo.type == DeviceInfo::kGpu) {
-        device_idx = idx;
-      }
-    }
-    IntersectionApi::SetPlatform(DeviceInfo::kVulkan);
-    return IntersectionApiPtr(IntersectionApi::Create(device_idx));
-  }();
-
-  // Use surface area heuristic for better intersection performance (but slower scene build time).
-  intersection_api->SetOption("bvh.builder", "sah");
-#endif
-
   // Load test geometry.
-  RadeonRays::World world;
   std::unique_ptr<RadeonRays::Shape> test_mesh;
+#if 1
   {
+    printf("Loading geometry\n");
+
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -631,43 +769,73 @@ int main()
       attrib.vertices.data(), attrib.vertices.size() / 3, 3 * sizeof(float), indices.data(), 0,
       numFaceVertices.data(), numFaceVertices.size());
     test_mesh->SetId(1);
+  }
+#endif
 
+  RadeonRays::World world;
+
+  if (test_mesh) {
     world.AttachShape(test_mesh.get());
     world.OnCommit();
   }
 
+  // Use surface area heuristic for better intersection performance (but slower scene build time).
+  world.options_.SetValue("bvh.builder", "sah");
+
+  std::unique_ptr<RadeonRays::Mesh> world_box_mesh;
+  if (world.shapes_.empty()) {
+    // Place a unit box into the world.
+    // TODO: create world box mesh
+    abort();
+    world.AttachShape(world_box_mesh.get());
+  }
+
   // Create BVH and upload it to GPU.
-  VkBuffer bvh_nodes_buffer;
-  VkBuffer vertices_buffer;
-  VkBuffer faces_buffer;
+  GPUBuffer bvh_nodes_gpu = {};
+  GPUBuffer vertices_gpu = {};
+  GPUBuffer faces_gpu = {};
   {
+    printf("Building BVH\n");
+
     RadeonRays::BvhBuilder builder;
     builder.updateBvh(world);
 
+    bvh_nodes_gpu = createGPUBuffer(
+      builder.getNodeBufferSizeBytes(),
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    vertices_gpu = createGPUBuffer(
+      builder.getVertexBufferSizeBytes(),
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    faces_gpu = createGPUBuffer(
+      builder.getFaceBufferSizeBytes(),
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
     // Nodes.
-    gsl::span<RadeonRays::Node> nodes;
-    {
-      VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-      create_info.size = builder.getNodeBufferSizeBytes();
-      create_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-      VKCHECK(vkCreateBuffer(g_vulkan.device, &create_info, nullptr, &bvh_nodes_buffer));
-      // TODO: allocate and map memory
-      // nodes = ...
-    }
+    std::vector<RadeonRays::Node> nodes(builder.getNodeCount());
+    std::vector<RadeonRays::Vertex> vertices(builder.getVertexCount());
+    std::vector<RadeonRays::Face> faces(builder.getFaceCount());
 
-    // TODO: vertices and faces
-    gsl::span<RadeonRays::Vertex> vertices;
-    gsl::span<RadeonRays::Face> faces;
+    builder.fillBuffers(nodes, vertices, faces);
 
-    // builder.fillBuffers(nodes, vertices, faces);
+    printf("Uploading BVH to GPU\n");
+
+    GPUBufferUploader::instance().uploadSync(nodes, bvh_nodes_gpu);
+    GPUBufferUploader::instance().uploadSync(vertices, vertices_gpu);
+    GPUBufferUploader::instance().uploadSync(faces, faces_gpu);
   }
-
 
   // PSO - ray cast depth output
   Program ray_depth_program = {};
   VkPipeline ray_depth_pipeline = {};
   VkRenderPass render_pass = {};
   {
+    printf("Loading shaders\n");
+
     // Quad vertex shader.
     VkShaderModule quad_vs = {};
     {
@@ -867,6 +1035,8 @@ int main()
     cache_file.close();
   }
 
+  printf("Started\n");
+
   while (!window->shouldClose()) {
     glfwPollEvents();
 
@@ -959,8 +1129,11 @@ int main()
 
   vkDeviceWaitIdle(g_vulkan.device);
 
-  // TODO: destroy other BVH resources as well.
-  vkDestroyBuffer(g_vulkan.device, bvh_nodes_buffer, nullptr);
+  destroyGPUBuffer(bvh_nodes_gpu);
+  destroyGPUBuffer(vertices_gpu);
+  destroyGPUBuffer(faces_gpu);
+
+  GPUBufferUploader::instance().terminate();
 
   vkDestroyPipelineCache(g_vulkan.device, g_vulkan.pipeline_cache, nullptr);
   vkDestroyRenderPass(g_vulkan.device, render_pass, nullptr);
@@ -968,6 +1141,8 @@ int main()
   vkDestroyPipeline(g_vulkan.device, ray_depth_pipeline, nullptr);
   window.reset();
   CleanupVulkan();
+
+  glfwTerminate();
 
   return 0;
 }
