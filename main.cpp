@@ -480,7 +480,7 @@ createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
     create_info.pBindings = vk_bindings.data();
 
     res.emplace_back();
-    vkCreateDescriptorSetLayout(g_vulkan.device, &create_info, nullptr, &res.back());
+    VKCHECK(vkCreateDescriptorSetLayout(g_vulkan.device, &create_info, nullptr, &res.back()));
   }
 
   // Free memory backing reflection data.
@@ -578,6 +578,7 @@ struct GPUBuffer {
   VkBuffer buffer;
   VkDeviceMemory memory;
   size_t size;
+  // VkBufferView view;
 };
 
 GPUBuffer
@@ -602,122 +603,170 @@ createGPUBuffer(size_t size, VkBufferUsageFlags buffer_flags, VkMemoryPropertyFl
 
   VKCHECK(vkBindBufferMemory(g_vulkan.device, res.buffer, res.memory, 0));
 
+  //{
+  //  VkBufferViewCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO };
+  //  create_info.buffer = res.buffer;
+  //  // TODO: make format more generic
+  //  create_info.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+  //  create_info.offset = 0;
+  //  create_info.range = VK_WHOLE_SIZE;
+  //  VKCHECK(vkCreateBufferView(g_vulkan.device, &create_info, nullptr, &res.view));
+  //}
+
   res.size = size;
   return res;
 }
 
 void destroyGPUBuffer(const GPUBuffer &gpu_buffer)
 {
+  // vkDestroyBufferView(g_vulkan.device, gpu_buffer.view, nullptr);
   vkFreeMemory(g_vulkan.device, gpu_buffer.memory, nullptr);
   vkDestroyBuffer(g_vulkan.device, gpu_buffer.buffer, nullptr);
 }
 
-class GPUBufferUploader {
- public:
-  static GPUBufferUploader &instance()
+namespace GPUBufferTransfer {
+
+namespace detail {
+GPUBuffer g_staging = {};
+VkCommandPool g_command_pool = VK_NULL_HANDLE;
+VkCommandBuffer g_command_buffer = VK_NULL_HANDLE;
+} // namespace detail
+
+void init(size_t size)
+{
+  detail::g_staging = createGPUBuffer(
+    size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
   {
-    static GPUBufferUploader s_instance;
-    return s_instance;
+    VkCommandPoolCreateInfo create_info = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
+    create_info.flags =
+      VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    create_info.queueFamilyIndex = g_vulkan.queue_family;
+    VKCHECK(vkCreateCommandPool(g_vulkan.device, &create_info, nullptr, &detail::g_command_pool));
   }
 
-  void init(size_t size)
   {
-    m_staging = createGPUBuffer(
-      size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    VkCommandBufferAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    allocate_info.commandPool = detail::g_command_pool;
+    allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocate_info.commandBufferCount = 1;
+    VKCHECK(vkAllocateCommandBuffers(g_vulkan.device, &allocate_info, &detail::g_command_buffer));
+  }
+}
 
-    {
-      VkCommandPoolCreateInfo create_info = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
-      create_info.flags =
-        VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-      create_info.queueFamilyIndex = g_vulkan.queue_family;
-      VKCHECK(vkCreateCommandPool(g_vulkan.device, &create_info, nullptr, &m_command_pool));
-    }
+void terminate()
+{
+  destroyGPUBuffer(detail::g_staging);
+  vkDestroyCommandPool(g_vulkan.device, detail::g_command_pool, nullptr);
+}
 
-    {
-      VkCommandBufferAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-      allocate_info.commandPool = m_command_pool;
-      allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-      allocate_info.commandBufferCount = 1;
-      VKCHECK(vkAllocateCommandBuffers(g_vulkan.device, &allocate_info, &m_command_buffer));
-    }
+/// Blocks until transfer is complete.
+void uploadSync(gsl::span<const gsl::byte> source, VkBuffer dest, VkAccessFlags dest_access = VK_ACCESS_MEMORY_READ_BIT)
+{
+  assert(source.size_bytes() <= detail::g_staging.size);
+  if (source.size_bytes() > detail::g_staging.size) {
+    return;
   }
 
-  void terminate()
+  void *ptr = nullptr;
+  VKCHECK(vkMapMemory(g_vulkan.device, detail::g_staging.memory, 0, source.size_bytes(), 0, &ptr));
+  std::memcpy(ptr, source.data(), source.size_bytes());
+  vkUnmapMemory(g_vulkan.device, detail::g_staging.memory);
+
+  VKCHECK(vkResetCommandBuffer(detail::g_command_buffer, 0));
+
   {
-    destroyGPUBuffer(m_staging);
-    vkDestroyCommandPool(g_vulkan.device, m_command_pool, nullptr);
+    VkCommandBufferBeginInfo begin_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VKCHECK(vkBeginCommandBuffer(detail::g_command_buffer, &begin_info));
   }
 
-  /// Blocks until transfer is complete.
-  template <typename CPUBuffer>
-  void uploadSync(const CPUBuffer &data, const GPUBuffer &dest_buffer)
   {
-    uploadSync(data, dest_buffer.buffer);
+    VkBufferCopy region = {};
+    region.size = source.size_bytes();
+    vkCmdCopyBuffer(detail::g_command_buffer, detail::g_staging.buffer, dest, 1, &region);
   }
 
-  /// Blocks until transfer is complete.
-  template <typename CPUBuffer>
-  void uploadSync(const CPUBuffer &data, VkBuffer dest_buffer)
   {
-    assert(data.size() <= m_staging.size);
-    if (data.size() > m_staging.size) {
-      return;
-    }
-
-    void *ptr = nullptr;
-    VKCHECK(vkMapMemory(g_vulkan.device, m_staging.memory, 0, data.size(), 0, &ptr));
-    std::memcpy(ptr, data.data(), data.size());
-    vkUnmapMemory(g_vulkan.device, m_staging.memory);
-
-    VKCHECK(vkResetCommandBuffer(m_command_buffer, 0));
-
-    {
-      VkCommandBufferBeginInfo begin_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-      begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-      VKCHECK(vkBeginCommandBuffer(m_command_buffer, &begin_info));
-    }
-
-    {
-      VkBufferCopy region = {};
-      region.size = data.size();
-      vkCmdCopyBuffer(m_command_buffer, m_staging.buffer, dest_buffer, 1, &region);
-    }
-
-    {
-      VkBufferMemoryBarrier barrier = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
-      barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-      barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier.buffer = dest_buffer;
-      barrier.offset = 0;
-      barrier.size = VK_WHOLE_SIZE;
-      vkCmdPipelineBarrier(
-        m_command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &barrier, 0, nullptr);
-    }
-
-    VKCHECK(vkEndCommandBuffer(m_command_buffer));
-
-    {
-      VkSubmitInfo submit_info = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-      submit_info.commandBufferCount = 1;
-      submit_info.pCommandBuffers = &m_command_buffer;
-      VKCHECK(vkQueueSubmit(g_vulkan.queue, 1, &submit_info, VK_NULL_HANDLE));
-    }
-
-    VKCHECK(vkDeviceWaitIdle(g_vulkan.device));
+    VkBufferMemoryBarrier barrier = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = dest_access;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.buffer = dest;
+    barrier.offset = 0;
+    barrier.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(
+      detail::g_command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+      VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &barrier, 0, nullptr);
   }
 
- private:
-  GPUBufferUploader() = default;
+  VKCHECK(vkEndCommandBuffer(detail::g_command_buffer));
 
-  GPUBuffer m_staging = {};
-  VkCommandPool m_command_pool = VK_NULL_HANDLE;
-  VkCommandBuffer m_command_buffer = VK_NULL_HANDLE;
-  // TODO: command pool, command buffer
-};
+  {
+    VkSubmitInfo submit_info = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &detail::g_command_buffer;
+    VKCHECK(vkQueueSubmit(g_vulkan.queue, 1, &submit_info, VK_NULL_HANDLE));
+  }
+
+  VKCHECK(vkDeviceWaitIdle(g_vulkan.device));
+}
+
+void downloadSync(VkBuffer source, gsl::span<gsl::byte> dest, VkAccessFlags source_access = VK_ACCESS_MEMORY_WRITE_BIT)
+{
+  assert(dest.size_bytes() <= detail::g_staging.size);
+  if (dest.size_bytes() > detail::g_staging.size) {
+    return;
+  }
+
+  VKCHECK(vkResetCommandBuffer(detail::g_command_buffer, 0));
+
+  {
+    VkCommandBufferBeginInfo begin_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VKCHECK(vkBeginCommandBuffer(detail::g_command_buffer, &begin_info));
+  }
+
+  {
+    VkBufferMemoryBarrier barrier = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+    barrier.srcAccessMask = source_access;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.buffer = source;
+    barrier.offset = 0;
+    barrier.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(
+      detail::g_command_buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &barrier, 0, nullptr);
+  }
+
+  {
+    VkBufferCopy region = {};
+    region.size = dest.size_bytes();
+    vkCmdCopyBuffer(detail::g_command_buffer, source, detail::g_staging.buffer, 1, &region);
+  }
+
+  VKCHECK(vkEndCommandBuffer(detail::g_command_buffer));
+
+  {
+    VkSubmitInfo submit_info = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &detail::g_command_buffer;
+    VKCHECK(vkQueueSubmit(g_vulkan.queue, 1, &submit_info, VK_NULL_HANDLE));
+  }
+
+  VKCHECK(vkDeviceWaitIdle(g_vulkan.device));
+
+  void *ptr = nullptr;
+  VKCHECK(vkMapMemory(g_vulkan.device, detail::g_staging.memory, 0, dest.size_bytes(), 0, &ptr));
+  std::memcpy(ptr, dest.data(), dest.size_bytes());
+  vkUnmapMemory(g_vulkan.device, detail::g_staging.memory);
+}
+
+} // namespace GPUBufferTransfer
 
 // === main ===
 
@@ -735,7 +784,7 @@ int main()
   const char **extensions = glfwGetRequiredInstanceExtensions(&extensions_count);
   SetupVulkan(extensions, extensions_count);
 
-  GPUBufferUploader::instance().init(32 * 1024 * 1024);
+  GPUBufferTransfer::init(32 * 1024 * 1024);
 
   // Init window.
   auto window = std::make_unique<Window>(1280, 720);
@@ -743,7 +792,7 @@ int main()
 
   // Load test geometry.
   std::unique_ptr<RadeonRays::Shape> test_mesh;
-#if 1
+#if 0
   {
     printf("Loading geometry\n");
 
@@ -782,12 +831,15 @@ int main()
   // Use surface area heuristic for better intersection performance (but slower scene build time).
   world.options_.SetValue("bvh.builder", "sah");
 
-  std::unique_ptr<RadeonRays::Mesh> world_box_mesh;
+  std::unique_ptr<RadeonRays::Mesh> fallback_mesh;
   if (world.shapes_.empty()) {
-    // Place a unit box into the world.
-    // TODO: create world box mesh
-    abort();
-    world.AttachShape(world_box_mesh.get());
+    const float my_vertices[] = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 };
+    const int my_indices[] = { 0, 1, 2 };
+    const int my_numfacevertices[] = { 3 };
+    fallback_mesh = std::make_unique<RadeonRays::Mesh>(
+      my_vertices, 3, 3 * sizeof(float), my_indices, 0, my_numfacevertices, 1);
+    fallback_mesh->SetId(0);
+    world.AttachShape(fallback_mesh.get());
   }
 
   // Create BVH and upload it to GPU.
@@ -800,19 +852,22 @@ int main()
     RadeonRays::BvhBuilder builder;
     builder.updateBvh(world);
 
+    // constexpr VkBufferUsageFlagBits kDebugInspectable = 0;
+    constexpr VkBufferUsageFlagBits kDebugInspectable = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
     bvh_nodes_gpu = createGPUBuffer(
       builder.getNodeBufferSizeBytes(),
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | kDebugInspectable,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     vertices_gpu = createGPUBuffer(
       builder.getVertexBufferSizeBytes(),
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | kDebugInspectable,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     faces_gpu = createGPUBuffer(
       builder.getFaceBufferSizeBytes(),
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | kDebugInspectable,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     // Nodes.
@@ -824,9 +879,41 @@ int main()
 
     printf("Uploading BVH to GPU\n");
 
-    GPUBufferUploader::instance().uploadSync(nodes, bvh_nodes_gpu);
-    GPUBufferUploader::instance().uploadSync(vertices, vertices_gpu);
-    GPUBufferUploader::instance().uploadSync(faces, faces_gpu);
+    const auto nodes_bytes = gsl::as_bytes(gsl::make_span(nodes));
+    const auto vertices_bytes = gsl::as_bytes(gsl::make_span(vertices));
+    const auto faces_bytes = gsl::as_bytes(gsl::make_span(faces));
+
+    // GPUBufferTransfer::uploadSync(nodes_bytes, bvh_nodes_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
+    // GPUBufferTransfer::uploadSync(vertices_bytes, vertices_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
+    // GPUBufferTransfer::uploadSync(faces_bytes, faces_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
+    GPUBufferTransfer::uploadSync(nodes_bytes, bvh_nodes_gpu.buffer, VK_ACCESS_MEMORY_READ_BIT);
+    GPUBufferTransfer::uploadSync(vertices_bytes, vertices_gpu.buffer, VK_ACCESS_MEMORY_READ_BIT);
+    GPUBufferTransfer::uploadSync(faces_bytes, faces_gpu.buffer, VK_ACCESS_MEMORY_READ_BIT);
+
+    // Test
+    {
+      VkMemoryRequirements mem_reqs = {};
+      vkGetBufferMemoryRequirements(g_vulkan.device, bvh_nodes_gpu.buffer, &mem_reqs);
+      std::vector<float> nodes_(mem_reqs.size / sizeof(float));
+      const auto nodes_bytes_ = gsl::as_writeable_bytes(gsl::make_span(nodes_));
+      GPUBufferTransfer::downloadSync(bvh_nodes_gpu.buffer, nodes_bytes_);
+    }
+
+    {
+      VkMemoryRequirements mem_reqs = {};
+      vkGetBufferMemoryRequirements(g_vulkan.device, vertices_gpu.buffer, &mem_reqs);
+      std::vector<float> vertices_(mem_reqs.size / sizeof(float));
+      const auto vertices_bytes_ = gsl::as_writeable_bytes(gsl::make_span(vertices_));
+      GPUBufferTransfer::downloadSync(vertices_gpu.buffer, vertices_bytes_);
+    }
+
+    {
+      VkMemoryRequirements mem_reqs = {};
+      vkGetBufferMemoryRequirements(g_vulkan.device, faces_gpu.buffer, &mem_reqs);
+      std::vector<float> faces_(mem_reqs.size / sizeof(float));
+      const auto faces_bytes_ = gsl::as_writeable_bytes(gsl::make_span(faces_));
+      GPUBufferTransfer::downloadSync(faces_gpu.buffer, faces_bytes_);
+    }
   }
 
   // PSO - ray cast depth output
@@ -1035,6 +1122,44 @@ int main()
     cache_file.close();
   }
 
+  VkDescriptorPool descriptor_pool = {};
+  {
+    VkDescriptorPoolSize pool_size = {};
+    pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    pool_size.descriptorCount = 1;
+
+    VkDescriptorPoolCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+    create_info.maxSets = 1;
+    create_info.poolSizeCount = 1;
+    create_info.pPoolSizes = &pool_size;
+    VKCHECK(vkCreateDescriptorPool(g_vulkan.device, &create_info, nullptr, &descriptor_pool));
+  }
+
+  VkDescriptorSet descriptor_set = {};
+  {
+    VkDescriptorSetAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+    allocate_info.descriptorPool = descriptor_pool;
+    allocate_info.descriptorSetCount = 1; // ray_depth_program.desc_set_layouts.size();
+    allocate_info.pSetLayouts = ray_depth_program.desc_set_layouts.data();
+    VKCHECK(vkAllocateDescriptorSets(g_vulkan.device, &allocate_info, &descriptor_set));
+  }
+
+  {
+    VkDescriptorBufferInfo buffer_info = {};
+    buffer_info.buffer = vertices_gpu.buffer;
+    buffer_info.offset = 0;
+    buffer_info.range = VK_WHOLE_SIZE;
+
+    VkWriteDescriptorSet write_descriptor_set = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    write_descriptor_set.dstSet = descriptor_set;
+    write_descriptor_set.dstBinding = 0;
+    write_descriptor_set.dstArrayElement = 0;
+    write_descriptor_set.descriptorCount = 1;
+    write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    write_descriptor_set.pBufferInfo = &buffer_info;
+    vkUpdateDescriptorSets(g_vulkan.device, 1, &write_descriptor_set, 0, nullptr);
+  }
+
   printf("Started\n");
 
   while (!window->shouldClose()) {
@@ -1103,6 +1228,10 @@ int main()
       vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
     }
 
+    vkCmdBindDescriptorSets(
+      command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_depth_program.pipeline_layout, 0, 1,
+      &descriptor_set, 0, nullptr);
+
     // TODO: set scissor and viewport dynamically once window resize is supported
 
     vkCmdDraw(command_buffer, 4, 1, 0, 0);
@@ -1129,11 +1258,13 @@ int main()
 
   vkDeviceWaitIdle(g_vulkan.device);
 
+  vkDestroyDescriptorPool(g_vulkan.device, descriptor_pool, nullptr);
+
   destroyGPUBuffer(bvh_nodes_gpu);
   destroyGPUBuffer(vertices_gpu);
   destroyGPUBuffer(faces_gpu);
 
-  GPUBufferUploader::instance().terminate();
+  GPUBufferTransfer::terminate();
 
   vkDestroyPipelineCache(g_vulkan.device, g_vulkan.pipeline_cache, nullptr);
   vkDestroyRenderPass(g_vulkan.device, render_pass, nullptr);

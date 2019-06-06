@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <gsl/gsl_byte>
 #include <gsl/gsl_util>
 #include <gsl/span>
 
