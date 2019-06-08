@@ -142,7 +142,7 @@ add_spirv_shader(
 source_group("shaders" FILES
   shaders/quad.vert
   shaders/depth.frag
-  bvh/RadeonRays/bvh.comp
+  bvh/RadeonRays/bvh.glslh
   bvh/RadeonRays/bvh_intersect.comp
 )
 
@@ -156,7 +156,7 @@ add_executable(GpuPathTracer
   ${PROJECT_BINARY_DIR}/include/shaders/quad.vert.spv.h
   shaders/depth.frag
   ${PROJECT_BINARY_DIR}/include/shaders/depth.frag.spv.h
-  bvh/RadeonRays/bvh.comp
+  bvh/RadeonRays/bvh.glslh
   bvh/RadeonRays/bvh_intersect.comp
   ${PROJECT_BINARY_DIR}/include/shaders/bvh_intersect.comp.spv.h
 )

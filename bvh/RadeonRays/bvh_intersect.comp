@@ -2,7 +2,7 @@
 
 #extension GL_GOOGLE_include_directive: require
 
-#include "bvh.comp"
+#include "bvh.glslh"
 
 void main() {
     IntersectClosest();
