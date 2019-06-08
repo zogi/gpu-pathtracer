@@ -24,50 +24,47 @@ THE SOFTWARE.
 
 #include <map>
 
-#include "radeon_rays.h"
 #include "../accelerator/bvh.h"
+#include "radeon_rays.h"
 
+#include "math/float3.h"
 #include "math/matrix.h"
 #include "math/quaternion.h"
-#include "math/float3.h"
 
-namespace RadeonRays
-{
-    /// This class translates pointer based BVH representation into
-    /// index based one suitable for feeding to GPU or any other accelerator
-    //
-    class PlainBvhTranslator
-    {
-    public:
-        // Constructor
-        PlainBvhTranslator() = default;
+namespace RadeonRays {
+/// This class translates pointer based BVH representation into
+/// index based one suitable for feeding to GPU or any other accelerator
+//
+class PlainBvhTranslator {
+ public:
+  // Constructor
+  PlainBvhTranslator() = default;
 
-        // Plain BVH node
-        struct Node
-        {
-            // Node's bounding box
-            bbox bounds;
-        };
+  // Plain BVH node
+  struct Node {
+    // Node's bounding box
+    bbox bounds;
+  };
 
-        void Flush();
-        void Process(Bvh& bvh);
-        void Process(Bvh const** bvhs, int const* offsets, int numbvhs);
-        void UpdateTopLevel(Bvh const& bvh);
+  void Flush();
+  void Process(Bvh &bvh);
+  void Process(Bvh const **bvhs, int const *offsets, int numbvhs);
+  void UpdateTopLevel(Bvh const &bvh);
 
-        std::vector<Node> nodes_;
-        std::vector<int>  extra_;
-        std::vector<int>  roots_;
-        int nodecnt_ = 0;
-        int root_ = 0;
+  std::vector<Node> nodes_;
+  std::vector<int> extra_;
+  std::vector<int> roots_;
+  int nodecnt_ = 0;
+  int root_ = 0;
 
-    private:
-        int ProcessNode(Bvh::Node const* node);
-        int ProcessNode(Bvh::Node const* n, int offset);
+ private:
+  int ProcessNode(Bvh::Node const *node);
+  int ProcessNode(Bvh::Node const *n, int offset);
 
-        PlainBvhTranslator(PlainBvhTranslator const&) = delete;
-        PlainBvhTranslator& operator =(PlainBvhTranslator const&) = delete;
-    };
-}
+  PlainBvhTranslator(PlainBvhTranslator const &) = delete;
+  PlainBvhTranslator &operator=(PlainBvhTranslator const &) = delete;
+};
+} // namespace RadeonRays
 
 
 #endif // PLAIN_BVH_TRANSLATOR_H
