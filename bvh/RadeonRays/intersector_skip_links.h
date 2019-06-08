@@ -68,7 +68,7 @@ THE SOFTWARE.
 #include <gsl/span>
 
 #include "math/float3.h"
-#include "translator/plain_bvh_translator.h"
+#include "plain_bvh_translator.h"
 
 namespace RadeonRays {
 class Bvh;

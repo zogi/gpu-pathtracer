@@ -21,13 +21,17 @@ THE SOFTWARE.
 ********************************************************************/
 #include "plain_bvh_translator.h"
 
-#include "../except/except.h"
-#include "../primitive/instance.h"
-#include "../primitive/mesh.h"
+#include "except/except.h"
+#include "primitive/instance.h"
+#include "primitive/mesh.h"
 
 #include <cassert>
 #include <iostream>
 #include <stack>
+
+namespace {
+inline float floatBitsFromInt(int i) { return *(float *)&i; }
+} // unnamed namespace
 
 namespace RadeonRays {
 void PlainBvhTranslator::Process(Bvh &bvh)
@@ -60,7 +64,7 @@ void PlainBvhTranslator::Process(Bvh &bvh)
 
   for (int i = rootidx; i < (int)nodes_.size(); ++i) {
     if (nodes_[i].bounds.pmin.w == -1.f) {
-      nodes_[i].bounds.pmin.w = (float)extra_[i];
+      nodes_[i].bounds.pmin.w = floatBitsFromInt(extra_[i]);
     } else {
       nodes_[i].bounds.pmin.w = -1.f;
     }
@@ -86,7 +90,7 @@ void PlainBvhTranslator::UpdateTopLevel(Bvh const &bvh)
 
   for (int j = root_; j < root_ + bvh.m_nodecnt; ++j) {
     if (nodes_[j].bounds.pmin.w == -1.f) {
-      nodes_[j].bounds.pmin.w = (float)extra_[j];
+      nodes_[j].bounds.pmin.w = floatBitsFromInt(extra_[j]);
     } else {
       nodes_[j].bounds.pmin.w = -1.f;
     }
@@ -133,7 +137,7 @@ void PlainBvhTranslator::Process(Bvh const **bvhs, int const *offsets, int numbv
 
     for (int j = currentroot; j < currentroot + bvhs[i]->m_nodecnt; ++j) {
       if (nodes_[j].bounds.pmin.w == -1.f) {
-        nodes_[j].bounds.pmin.w = (float)extra_[j];
+        nodes_[j].bounds.pmin.w = floatBitsFromInt(extra_[j]);
       } else {
         nodes_[j].bounds.pmin.w = -1.f;
       }
@@ -158,7 +162,7 @@ void PlainBvhTranslator::Process(Bvh const **bvhs, int const *offsets, int numbv
 
   for (int j = root_; j < root_ + bvhs[numbvhs]->m_nodecnt; ++j) {
     if (nodes_[j].bounds.pmin.w == -1.f) {
-      nodes_[j].bounds.pmin.w = (float)extra_[j];
+      nodes_[j].bounds.pmin.w = floatBitsFromInt(extra_[j]);
     } else {
       nodes_[j].bounds.pmin.w = -1.f;
     }
@@ -179,7 +183,7 @@ int PlainBvhTranslator::ProcessNode(Bvh::Node const *n)
     node.bounds.pmin.w = -1.f;
   } else {
     ProcessNode(n->lc);
-    node.bounds.pmin.w = (float)ProcessNode(n->rc);
+    node.bounds.pmin.w = floatBitsFromInt(ProcessNode(n->rc));
   }
 
   return idx;
@@ -199,7 +203,7 @@ int PlainBvhTranslator::ProcessNode(Bvh::Node const *n, int offset)
     node.bounds.pmin.w = -1.f;
   } else {
     ProcessNode(n->lc, offset);
-    node.bounds.pmin.w = (float)ProcessNode(n->rc, offset);
+    node.bounds.pmin.w = floatBitsFromInt(ProcessNode(n->rc, offset));
   }
 
   return idx;

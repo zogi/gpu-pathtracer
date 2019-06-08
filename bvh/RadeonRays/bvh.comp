@@ -187,14 +187,22 @@ void IntersectClosestRC()
 }
 
 
-#define STARTIDX(x)     ((int(x.pmin.w)))
+#define STARTIDX(x)     ((startIdxFromW(x.pmin.w)))
 #define LEAFNODE(x)     (((x).pmin.w) != -1.f)
+
+int startIdxFromW(float w) {
+  return (floatBitsToInt(w)) >> 4;
+}
+
+int faceCountFromW(float w) {
+  return floatBitsToInt(w) & 0xf;
+}
 
 bool IntersectBox(in ray r, in vec3 invdir, in bbox box, in float maxt)
 {
     const vec3 f = (box.pmax.xyz - r.o.xyz) * invdir;
     const vec3 n = (box.pmin.xyz - r.o.xyz) * invdir;
-          
+
     const vec3 tmax = max(f, n);
     const vec3 tmin = min(f, n);
 

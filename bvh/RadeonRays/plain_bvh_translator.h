@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 #include <map>
 
-#include "../accelerator/bvh.h"
+#include "accelerator/bvh.h"
 #include "radeon_rays.h"
 
 #include "math/float3.h"

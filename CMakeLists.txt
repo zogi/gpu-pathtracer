@@ -46,12 +46,12 @@ add_library(RadeonRaysBVH STATIC
   ${RADEONRAYS_ROOT}/src/primitive/mesh.h
   ${RADEONRAYS_ROOT}/src/primitive/mesh.cpp
   ${RADEONRAYS_ROOT}/src/primitive/shapeimpl.h
-  ${RADEONRAYS_ROOT}/src/translator/plain_bvh_translator.h
-  ${RADEONRAYS_ROOT}/src/translator/plain_bvh_translator.cpp
   ${RADEONRAYS_ROOT}/src/util/options.h
   ${RADEONRAYS_ROOT}/src/util/options.cpp
   ${RADEONRAYS_ROOT}/src/world/world.h
   ${RADEONRAYS_ROOT}/src/world/world.cpp
+  bvh/RadeonRays/plain_bvh_translator.h
+  bvh/RadeonRays/plain_bvh_translator.cpp
   bvh/RadeonRays/intersector_skip_links.h
   bvh/RadeonRays/intersector_skip_links.cpp
 )
@@ -132,9 +132,18 @@ add_spirv_shader(
   OUTPUT ${PROJECT_BINARY_DIR}/include/shaders/depth.frag.spv.h
   EMBED depth_frag_spirv
 )
+### For testing. TODO: remove.
+add_spirv_shader(
+  bvh/RadeonRays/bvh_intersect.comp
+  OUTPUT ${PROJECT_BINARY_DIR}/include/shaders/bvh_intersect.comp.spv.h
+  EMBED bvh_intersect_comp_spirv
+)
+###
 source_group("shaders" FILES
   shaders/quad.vert
   shaders/depth.frag
+  bvh/RadeonRays/bvh.comp
+  bvh/RadeonRays/bvh_intersect.comp
 )
 
 # Main
@@ -147,6 +156,9 @@ add_executable(GpuPathTracer
   ${PROJECT_BINARY_DIR}/include/shaders/quad.vert.spv.h
   shaders/depth.frag
   ${PROJECT_BINARY_DIR}/include/shaders/depth.frag.spv.h
+  bvh/RadeonRays/bvh.comp
+  bvh/RadeonRays/bvh_intersect.comp
+  ${PROJECT_BINARY_DIR}/include/shaders/bvh_intersect.comp.spv.h
 )
 target_include_directories(GpuPathTracer PRIVATE
   ${PROJECT_BINARY_DIR}/include
