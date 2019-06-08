@@ -762,7 +762,7 @@ void downloadSync(VkBuffer source, gsl::span<gsl::byte> dest, VkAccessFlags sour
 
   void *ptr = nullptr;
   VKCHECK(vkMapMemory(g_vulkan.device, detail::g_staging.memory, 0, dest.size_bytes(), 0, &ptr));
-  std::memcpy(ptr, dest.data(), dest.size_bytes());
+  std::memcpy(dest.data(), ptr, dest.size_bytes());
   vkUnmapMemory(g_vulkan.device, detail::g_staging.memory);
 }
 
