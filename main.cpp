@@ -664,8 +664,8 @@ void terminate()
 /// Blocks until transfer is complete.
 void uploadSync(gsl::span<const gsl::byte> source, VkBuffer dest, VkAccessFlags dest_access = VK_ACCESS_MEMORY_READ_BIT)
 {
-  assert(source.size_bytes() <= detail::g_staging.size);
-  if (source.size_bytes() > detail::g_staging.size) {
+  assert(source.size_bytes() <= gsl::index(detail::g_staging.size));
+  if (source.size_bytes() > gsl::index(detail::g_staging.size)) {
     return;
   }
 
@@ -716,8 +716,8 @@ void uploadSync(gsl::span<const gsl::byte> source, VkBuffer dest, VkAccessFlags 
 
 void downloadSync(VkBuffer source, gsl::span<gsl::byte> dest, VkAccessFlags source_access = VK_ACCESS_MEMORY_WRITE_BIT)
 {
-  assert(dest.size_bytes() <= detail::g_staging.size);
-  if (dest.size_bytes() > detail::g_staging.size) {
+  assert(dest.size_bytes() <= gsl::index(detail::g_staging.size));
+  if (dest.size_bytes() > gsl::index(detail::g_staging.size)) {
     return;
   }
 
@@ -833,11 +833,11 @@ int main()
 
   std::unique_ptr<RadeonRays::Mesh> fallback_mesh;
   if (world.shapes_.empty()) {
-    const float my_vertices[] = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 };
+    const float my_vertices[] = { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f };
     const int my_indices[] = { 0, 1, 2 };
     const int my_numfacevertices[] = { 3 };
     fallback_mesh = std::make_unique<RadeonRays::Mesh>(
-      my_vertices, 3, 3 * sizeof(float), my_indices, 0, my_numfacevertices, 1);
+      my_vertices, 3, 3 * int(sizeof(float)), my_indices, 0, my_numfacevertices, 1);
     fallback_mesh->SetId(0);
     world.AttachShape(fallback_mesh.get());
   }
@@ -883,18 +883,15 @@ int main()
     const auto vertices_bytes = gsl::as_bytes(gsl::make_span(vertices));
     const auto faces_bytes = gsl::as_bytes(gsl::make_span(faces));
 
-    // GPUBufferTransfer::uploadSync(nodes_bytes, bvh_nodes_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
-    // GPUBufferTransfer::uploadSync(vertices_bytes, vertices_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
-    // GPUBufferTransfer::uploadSync(faces_bytes, faces_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
-    GPUBufferTransfer::uploadSync(nodes_bytes, bvh_nodes_gpu.buffer, VK_ACCESS_MEMORY_READ_BIT);
-    GPUBufferTransfer::uploadSync(vertices_bytes, vertices_gpu.buffer, VK_ACCESS_MEMORY_READ_BIT);
-    GPUBufferTransfer::uploadSync(faces_bytes, faces_gpu.buffer, VK_ACCESS_MEMORY_READ_BIT);
+    GPUBufferTransfer::uploadSync(nodes_bytes, bvh_nodes_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
+    GPUBufferTransfer::uploadSync(vertices_bytes, vertices_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
+    GPUBufferTransfer::uploadSync(faces_bytes, faces_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
 
     // Test
     {
       VkMemoryRequirements mem_reqs = {};
       vkGetBufferMemoryRequirements(g_vulkan.device, bvh_nodes_gpu.buffer, &mem_reqs);
-      std::vector<float> nodes_(mem_reqs.size / sizeof(float));
+      std::vector<RadeonRays::Node> nodes_(mem_reqs.size / sizeof(RadeonRays::Node));
       const auto nodes_bytes_ = gsl::as_writeable_bytes(gsl::make_span(nodes_));
       GPUBufferTransfer::downloadSync(bvh_nodes_gpu.buffer, nodes_bytes_);
     }
@@ -902,7 +899,7 @@ int main()
     {
       VkMemoryRequirements mem_reqs = {};
       vkGetBufferMemoryRequirements(g_vulkan.device, vertices_gpu.buffer, &mem_reqs);
-      std::vector<float> vertices_(mem_reqs.size / sizeof(float));
+      std::vector<RadeonRays::Vertex> vertices_(mem_reqs.size / sizeof(RadeonRays::Vertex));
       const auto vertices_bytes_ = gsl::as_writeable_bytes(gsl::make_span(vertices_));
       GPUBufferTransfer::downloadSync(vertices_gpu.buffer, vertices_bytes_);
     }
@@ -910,7 +907,7 @@ int main()
     {
       VkMemoryRequirements mem_reqs = {};
       vkGetBufferMemoryRequirements(g_vulkan.device, faces_gpu.buffer, &mem_reqs);
-      std::vector<float> faces_(mem_reqs.size / sizeof(float));
+      std::vector<RadeonRays::Face> faces_(mem_reqs.size / sizeof(RadeonRays::Face));
       const auto faces_bytes_ = gsl::as_writeable_bytes(gsl::make_span(faces_));
       GPUBufferTransfer::downloadSync(faces_gpu.buffer, faces_bytes_);
     }
