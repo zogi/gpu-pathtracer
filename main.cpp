@@ -1123,7 +1123,7 @@ int main()
   {
     VkDescriptorPoolSize pool_size = {};
     pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    pool_size.descriptorCount = 1;
+    pool_size.descriptorCount = 3;
 
     VkDescriptorPoolCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     create_info.maxSets = 1;
@@ -1142,18 +1142,24 @@ int main()
   }
 
   {
-    VkDescriptorBufferInfo buffer_info = {};
-    buffer_info.buffer = vertices_gpu.buffer;
-    buffer_info.offset = 0;
-    buffer_info.range = VK_WHOLE_SIZE;
+    VkBuffer buffers[] = { bvh_nodes_gpu.buffer, vertices_gpu.buffer, faces_gpu.buffer };
+
+    VkDescriptorBufferInfo buffer_infos[ARRAYSIZE(buffers)];
+    for (int i = 0; i < ARRAYSIZE(buffers); ++i) {
+      VkDescriptorBufferInfo &buffer_info = buffer_infos[i];
+      buffer_info.buffer = buffers[i];
+      buffer_info.offset = 0;
+      buffer_info.range = VK_WHOLE_SIZE;
+    }
 
     VkWriteDescriptorSet write_descriptor_set = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
     write_descriptor_set.dstSet = descriptor_set;
     write_descriptor_set.dstBinding = 0;
     write_descriptor_set.dstArrayElement = 0;
-    write_descriptor_set.descriptorCount = 1;
+    write_descriptor_set.descriptorCount = ARRAYSIZE(buffer_infos);
     write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    write_descriptor_set.pBufferInfo = &buffer_info;
+    write_descriptor_set.pBufferInfo = buffer_infos;
+
     vkUpdateDescriptorSets(g_vulkan.device, 1, &write_descriptor_set, 0, nullptr);
   }
 
