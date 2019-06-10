@@ -419,12 +419,22 @@ static void glfwErrorCallback(int error, const char *description)
 static void SetupVulkan(const char **extensions, uint32_t extensions_count);
 static void CleanupVulkan();
 
+// ===
+
+struct DebugVars {
+  int debug_var_int_1;
+};
+
 // === SPIR-V reflection utilities ===
 
 using SPIRVBytecodeView = gsl::span<uint8_t>;
 
-std::vector<VkDescriptorSetLayout>
-createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
+struct ResultLayout {
+  VkPipelineLayout pipeline_layout;
+  std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
+};
+
+ResultLayout createPipelineLayoutFromShaderBytecodes(std::vector<SPIRVBytecodeView> spirv_bytecodes)
 {
   // Load reflection data for the shaders.
   std::vector<SpvReflectShaderModule> shaders(spirv_bytecodes.size());
@@ -442,7 +452,13 @@ createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
     VkShaderStageFlags stage_flags;
   };
   std::unordered_map<SetNumber, std::map<BindingNumber, BindingData>> bindings;
+
+  // Also collect push constant ranges.
+  std::vector<VkPushConstantRange> push_constant_ranges;
+  push_constant_ranges.reserve(shaders.size());
+
   for (auto &shader : shaders) {
+    // Descriptor bindings.
     for (size_t i = 0; i < shader.descriptor_binding_count; ++i) {
       auto &binding = shader.descriptor_bindings[i];
       auto [it, inserted] = bindings[binding.set].emplace(binding.binding, BindingData{ &binding, 0 });
@@ -453,12 +469,26 @@ createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
       }
       it->second.stage_flags |= shader.shader_stage;
     }
+
+    // Push constants.
+    if (shader.push_constant_block_count != 0) {
+      // Only support one push constant block per shader stage.
+      assert(shader.push_constant_block_count == 1);
+      const auto &block = shader.push_constant_blocks[0];
+      VkPushConstantRange push_constant_range;
+      push_constant_range.stageFlags = shader.shader_stage;
+      push_constant_range.offset = block.offset;
+      push_constant_range.size = block.size;
+      push_constant_ranges.push_back(push_constant_range);
+    }
   }
 
+  ResultLayout res;
+
   // Create the descriptor set layouts.
-  std::vector<VkDescriptorSetLayout> res;
+  std::vector<VkDescriptorSetLayout> &res_ds = res.descriptor_set_layouts;
   const size_t set_count = bindings.size();
-  res.reserve(set_count);
+  res_ds.reserve(set_count);
   for (auto &[set_number, bindings_map] : bindings) {
     // Convert spirv reflection binding data to Vulkan binding data.
     std::vector<VkDescriptorSetLayoutBinding> vk_bindings;
@@ -485,8 +515,8 @@ createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
     create_info.bindingCount = uint32_t(vk_bindings.size());
     create_info.pBindings = vk_bindings.data();
 
-    res.emplace_back();
-    VKCHECK(vkCreateDescriptorSetLayout(g_vulkan.device, &create_info, nullptr, &res.back()));
+    res_ds.emplace_back();
+    VKCHECK(vkCreateDescriptorSetLayout(g_vulkan.device, &create_info, nullptr, &res_ds.back()));
   }
 
   // Free memory backing reflection data.
@@ -494,13 +524,20 @@ createDescriptorSetLayout(std::vector<SPIRVBytecodeView> spirv_bytecodes)
     spvReflectDestroyShaderModule(&shader);
   }
 
+  // Create pipeline layout.
+  {
+    VkPipelineLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+    create_info.setLayoutCount = uint32_t(res_ds.size());
+    create_info.pSetLayouts = res_ds.data();
+    create_info.pushConstantRangeCount = uint32_t(push_constant_ranges.size());
+    create_info.pPushConstantRanges = push_constant_ranges.data();
+    vkCreatePipelineLayout(g_vulkan.device, &create_info, nullptr, &res.pipeline_layout);
+  }
+
   return res;
 }
 
-// The DescriptorSetLayoutData structure definition and the body of
-// createDescriptorSetLayoutDataFromSPIRV were copied from
-// external/SPIRV-Reflect/examples/main_descriptors.cpp
-// The code has been modified to work as a function.
+// Based on SPIRV-Reflect.
 // License can be found at the end of external/SPIRV-Reflect/README.md
 
 struct DescriptorSetLayoutData {
@@ -1054,18 +1091,7 @@ int main()
     // Get descriptor set layouts from the shader bytecodes.
     const auto quad_spirv = SPIRVBytecodeView((uint8_t *)quad_vert_spirv, sizeof(quad_vert_spirv));
     const auto depth_spirv = SPIRVBytecodeView((uint8_t *)depth_frag_spirv, sizeof(depth_frag_spirv));
-    auto desc_set_layouts = createDescriptorSetLayout({ quad_spirv, depth_spirv });
-
-    // Pipeline layout
-    VkPipelineLayout pipeline_layout = {};
-    {
-      VkPipelineLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-      create_info.setLayoutCount = uint32_t(desc_set_layouts.size());
-      create_info.pSetLayouts = desc_set_layouts.data();
-      create_info.pushConstantRangeCount = 0;
-      create_info.pPushConstantRanges = nullptr;
-      vkCreatePipelineLayout(g_vulkan.device, &create_info, nullptr, &pipeline_layout);
-    }
+    ResultLayout layout = createPipelineLayoutFromShaderBytecodes({ quad_spirv, depth_spirv });
 
     {
       VkAttachmentDescription color_attachment_desc = {};
@@ -1106,7 +1132,7 @@ int main()
     create_info.pDepthStencilState = &depth_stencil_state;
     create_info.pColorBlendState = &color_blend_state;
     create_info.pDynamicState = &dynamic_state;
-    create_info.layout = pipeline_layout;
+    create_info.layout = layout.pipeline_layout;
     create_info.renderPass = render_pass;
     create_info.subpass = 0;
 
@@ -1115,8 +1141,8 @@ int main()
 
     ray_depth_program.shaders.push_back(quad_vs);
     ray_depth_program.shaders.push_back(depth_fs);
-    ray_depth_program.pipeline_layout = pipeline_layout;
-    ray_depth_program.desc_set_layouts = desc_set_layouts;
+    ray_depth_program.pipeline_layout = layout.pipeline_layout;
+    ray_depth_program.desc_set_layouts = layout.descriptor_set_layouts;
   }
 
   // Save pipeline cache data.
@@ -1174,6 +1200,9 @@ int main()
     vkUpdateDescriptorSets(g_vulkan.device, 1, &write_descriptor_set, 0, nullptr);
   }
 
+  DebugVars debug_vars = {};
+  debug_vars.debug_var_int_1 = 0;
+
   printf("Started\n");
 
   while (!window->shouldClose()) {
@@ -1192,9 +1221,33 @@ int main()
 
     // UI
     {
-      // UI logic
-      bool open = true;
-      ImGui::ShowDemoWindow(&open);
+      struct {
+        bool settings_window_open = true;
+      } ui_state;
+
+      // Settings window
+      const auto uiSettingsWindow = [&ui_state, &debug_vars]() {
+        ImGui::SetNextWindowSize(ImVec2(430, 450), ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin("Settings", &ui_state.settings_window_open)) {
+          ImGui::End();
+          return;
+        }
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
+        ImGui::Columns(2);
+        ImGui::Separator();
+        {
+          ImGui::AlignTextToFramePadding();
+          ImGui::Text("debug int");
+          ImGui::NextColumn();
+          ImGui::DragInt("", &debug_vars.debug_var_int_1, 0.1f);
+          ImGui::NextColumn();
+        }
+
+        ImGui::PopStyleVar();
+        ImGui::End();
+      };
+
+      uiSettingsWindow();
 
       // Render UI to memory buffers (agnostic to graphics API).
       ImGui::Render();
@@ -1245,6 +1298,11 @@ int main()
     vkCmdBindDescriptorSets(
       command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_depth_program.pipeline_layout, 0, 1,
       &descriptor_set, 0, nullptr);
+
+    // TODO: use SPIR-V reflection data for stage flags, offset and size.
+    vkCmdPushConstants(
+      command_buffer, ray_depth_program.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+      sizeof(DebugVars), &debug_vars);
 
     // TODO: set scissor and viewport dynamically once window resize is supported
 

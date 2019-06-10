@@ -4,6 +4,15 @@
 
 #include "RadeonRays/bvh.glslh"
 
+struct DebugVars {
+  int debugVarInt1;
+};
+
+layout(push_constant) uniform block
+{
+	DebugVars debugVars;
+};
+
 layout(location = 0) in vec2 texCoords;
 layout(location = 0) out vec4 outputColor;
 
@@ -45,7 +54,7 @@ void main() {
 
 #if 1
   // Intersect with leaf node.
-  BvhNode node = Nodes[5];
+  BvhNode node = Nodes[debugVars.debugVarInt1];
   Intersection isect;
   isect.shapeid = -1;
   isect.uvwt.w = maxDist;
