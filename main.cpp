@@ -1,5 +1,6 @@
 #include "camera.h"
 #include "common.h"
+#include "shaders/config-inc.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
@@ -1109,11 +1110,12 @@ int main()
     color_blend_state.pAttachments = &color_blend_attachment_state;
     // color_blend_state.blendConstants[4];
 
-    VkPipelineDynamicStateCreateInfo dynamic_state = {
+    VkPipelineDynamicStateCreateInfo dynamic_state_info = {
       VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO
     };
-    dynamic_state.dynamicStateCount = 0;
-    dynamic_state.pDynamicStates = nullptr;
+    const VkDynamicState dynamic_states[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    dynamic_state_info.dynamicStateCount = ARRAYSIZE(dynamic_states);
+    dynamic_state_info.pDynamicStates = dynamic_states;
 
     // Get descriptor set layouts from the shader bytecodes.
     const auto quad_spirv = SPIRVBytecodeView((uint8_t *)quad_vert_spirv, sizeof(quad_vert_spirv));
@@ -1158,7 +1160,7 @@ int main()
     create_info.pMultisampleState = &multisample_state;
     create_info.pDepthStencilState = &depth_stencil_state;
     create_info.pColorBlendState = &color_blend_state;
-    create_info.pDynamicState = &dynamic_state;
+    create_info.pDynamicState = &dynamic_state_info;
     create_info.layout = layout.pipeline_layout;
     create_info.renderPass = render_pass;
     create_info.subpass = 0;
@@ -1200,7 +1202,7 @@ int main()
   {
     VkDescriptorSetAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
     allocate_info.descriptorPool = descriptor_pool;
-    allocate_info.descriptorSetCount = 1; // ray_depth_program.desc_set_layouts.size();
+    allocate_info.descriptorSetCount = ray_depth_program.desc_set_layouts.size();
     allocate_info.pSetLayouts = ray_depth_program.desc_set_layouts.data();
     VKCHECK(vkAllocateDescriptorSets(g_vulkan.device, &allocate_info, &descriptor_set));
   }
@@ -1218,7 +1220,7 @@ int main()
 
     VkWriteDescriptorSet write_descriptor_set = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
     write_descriptor_set.dstSet = descriptor_set;
-    write_descriptor_set.dstBinding = 0;
+    write_descriptor_set.dstBinding = BVH_SET_BINDING;
     write_descriptor_set.dstArrayElement = 0;
     write_descriptor_set.descriptorCount = ARRAYSIZE(buffer_infos);
     write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -1354,15 +1356,26 @@ int main()
     }
 
     vkCmdBindDescriptorSets(
-      command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_depth_program.pipeline_layout, 0, 1,
-      &descriptor_set, 0, nullptr);
+      command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_depth_program.pipeline_layout,
+      BVH_SET_BINDING, 1, &descriptor_set, 0, nullptr);
 
     // TODO: use SPIR-V reflection data for stage flags, offset and size.
     vkCmdPushConstants(
       command_buffer, ray_depth_program.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
       sizeof(DebugVars), &debug_vars);
 
-    // TODO: set scissor and viewport dynamically once window resize is supported
+    {
+      const auto window_extent = window->extent<VkExtent2D>();
+      VkViewport viewport = {};
+      viewport.width = float(window_extent.width);
+      viewport.height = float(window_extent.height);
+      vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+    }
+    {
+      VkRect2D scissor = {};
+      scissor.extent = window->extent<VkExtent2D>();
+      vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+    }
 
     vkCmdDraw(command_buffer, 4, 1, 0, 0);
 

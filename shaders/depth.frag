@@ -2,6 +2,7 @@
 
 #extension GL_GOOGLE_include_directive: require
 
+#include "config-inc.h"
 #include "RadeonRays/bvh.glslh"
 
 struct DebugVars {
