@@ -108,7 +108,7 @@ int getShapeId(int faceidx) {
 #if HAVE_SHAPE_INFO
     return Shapes[face.shapeidx].id;
 #else
-  return 0;
+    return 0;
 #endif
 }
 
@@ -122,8 +122,10 @@ int Ray_GetMask( in ray r )
     return r.extra.x;
 }
 
-#define STARTIDX(x)     ((startIdxFromW(x.pmin.w)))
+//#define STARTIDX(x)     ((startIdxFromW(x.pmin.w)))
+#define STARTIDX(x)     (int((x).pmin.w))
 #define LEAFNODE(x)     (((x).pmin.w) != -1.f)
+//#define LEAFNODE(x)     (((x).pmin.w) != 0.f)
 
 int startIdxFromW(float w) {
   return (floatBitsToInt(w)) >> 4;

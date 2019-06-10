@@ -5,8 +5,12 @@
 // Triangle strip.
 vec2 verts[] = { vec2(-1, -1), vec2(-1, 1), vec2(1, -1), vec2(1, 1) };
 
+layout(location = 0) out vec2 texCoords;
+
 void main()
 {
   // TODO: remove this: multiply by 0.8 to see the quad for now.
-  gl_Position = vec4(verts[gl_VertexIndex] * 0.8, 1, 1);
+  vec2 v = verts[gl_VertexIndex];
+  gl_Position = vec4(v * 0.8, 1, 1);
+  texCoords = 0.5 * v + 0.5;
 }

@@ -798,7 +798,7 @@ int main()
 
   // Load test geometry.
   std::unique_ptr<RadeonRays::Shape> test_mesh;
-#if 0
+#if 1
   {
     printf("Loading geometry\n");
 
@@ -807,7 +807,9 @@ int main()
     std::vector<tinyobj::material_t> materials;
     std::string warn;
     std::string err;
-    const std::string filename = "../models/lucy/lucy.obj";
+    // const std::string filename = "../models/lucy/lucy.obj";
+    // const std::string filename = "../models/teapot.obj";
+    const std::string filename = "../models/icosahedron.obj";
     const bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str());
 
     const auto &mesh = shapes[0].mesh;
@@ -821,8 +823,8 @@ int main()
     std::vector<int> numFaceVertices(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
 
     test_mesh = std::make_unique<RadeonRays::Mesh>(
-      attrib.vertices.data(), attrib.vertices.size() / 3, 3 * sizeof(float), indices.data(), 0,
-      numFaceVertices.data(), numFaceVertices.size());
+      attrib.vertices.data(), int(attrib.vertices.size()) / 3, 3 * int(sizeof(float)),
+      indices.data(), 0, numFaceVertices.data(), int(numFaceVertices.size()));
     test_mesh->SetId(1);
   }
 #endif
@@ -839,7 +841,8 @@ int main()
 
   std::unique_ptr<RadeonRays::Mesh> fallback_mesh;
   if (world.shapes_.empty()) {
-    const float my_vertices[] = { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f };
+    // const float my_vertices[] = { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f };
+    const float my_vertices[] = { -1.0f, -0.5f, 0.0f, 1.0f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f };
     const int my_indices[] = { 0, 1, 2 };
     const int my_numfacevertices[] = { 3 };
     fallback_mesh = std::make_unique<RadeonRays::Mesh>(
@@ -894,6 +897,7 @@ int main()
     GPUBufferTransfer::uploadSync(faces_bytes, faces_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
 
     // Test
+#if 0
     {
       VkMemoryRequirements mem_reqs = {};
       vkGetBufferMemoryRequirements(g_vulkan.device, bvh_nodes_gpu.buffer, &mem_reqs);
@@ -917,6 +921,7 @@ int main()
       const auto faces_bytes_ = gsl::as_writeable_bytes(gsl::make_span(faces_));
       GPUBufferTransfer::downloadSync(faces_gpu.buffer, faces_bytes_);
     }
+#endif
   }
 
   // PSO - ray cast depth output
