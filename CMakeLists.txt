@@ -132,18 +132,10 @@ add_spirv_shader(
   OUTPUT ${PROJECT_BINARY_DIR}/include/shaders/depth.frag.spv.h
   EMBED depth_frag_spirv
 )
-### For testing. TODO: remove.
-add_spirv_shader(
-  bvh/RadeonRays/bvh_intersect.comp
-  OUTPUT ${PROJECT_BINARY_DIR}/include/shaders/bvh_intersect.comp.spv.h
-  EMBED bvh_intersect_comp_spirv
-)
-###
 source_group("shaders" FILES
   shaders/quad.vert
   shaders/depth.frag
-  bvh/RadeonRays/bvh.glslh
-  bvh/RadeonRays/bvh_intersect.comp
+  shaders/RadeonRays/bvh.glslh
 )
 
 # Main
@@ -156,9 +148,7 @@ add_executable(GpuPathTracer
   ${PROJECT_BINARY_DIR}/include/shaders/quad.vert.spv.h
   shaders/depth.frag
   ${PROJECT_BINARY_DIR}/include/shaders/depth.frag.spv.h
-  bvh/RadeonRays/bvh.glslh
-  bvh/RadeonRays/bvh_intersect.comp
-  ${PROJECT_BINARY_DIR}/include/shaders/bvh_intersect.comp.spv.h
+  shaders/RadeonRays/bvh.glslh
 )
 target_include_directories(GpuPathTracer PRIVATE
   ${PROJECT_BINARY_DIR}/include
