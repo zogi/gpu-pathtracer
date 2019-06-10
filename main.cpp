@@ -310,7 +310,13 @@ Window::Window(int width, int height)
     VkPipelineCacheCreateInfo create_info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
     create_info.initialDataSize = cache_data.size();
     create_info.pInitialData = cache_data.data();
-    VKCHECK(vkCreatePipelineCache(g_vulkan.device, &create_info, nullptr, &g_vulkan.pipeline_cache));
+    const VkResult result =
+      vkCreatePipelineCache(g_vulkan.device, &create_info, nullptr, &g_vulkan.pipeline_cache);
+    if (result != VK_SUCCESS) {
+      create_info.initialDataSize = 0;
+      create_info.pInitialData = nullptr;
+      VKCHECK(vkCreatePipelineCache(g_vulkan.device, &create_info, nullptr, &g_vulkan.pipeline_cache));
+    }
   }
 
   // Init ImGui.
