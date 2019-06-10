@@ -79,6 +79,7 @@ using Node = PlainBvhTranslator::Node;
 // Position
 using Vertex = float3;
 
+#pragma pack(push, 1)
 struct Face {
   // Up to 3 indices
   int idx[3];
@@ -86,7 +87,9 @@ struct Face {
   int shape_id;
   // Primitive ID
   int prim_id;
+  int padding[3];
 };
+#pragma pack(pop)
 
 class BvhBuilder {
  public:

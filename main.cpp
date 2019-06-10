@@ -422,7 +422,11 @@ static void CleanupVulkan();
 // ===
 
 struct DebugVars {
+  float debug_var_cam_offset;
+  float debug_var_scale;
   int debug_var_int_1;
+  float debug_var_float_1;
+  float debug_var_float_2;
 };
 
 // === SPIR-V reflection utilities ===
@@ -830,7 +834,7 @@ int main()
   GPUBufferTransfer::init(32 * 1024 * 1024);
 
   // Init window.
-  auto window = std::make_unique<Window>(1280, 720);
+  auto window = std::make_unique<Window>(1000, 1000);
   window->setBackgroudColor(ImVec4(0.45f, 0.55f, 0.60f, 1.00f));
 
   // Load test geometry.
@@ -844,12 +848,31 @@ int main()
     std::vector<tinyobj::material_t> materials;
     std::string warn;
     std::string err;
-    // const std::string filename = "../models/lucy/lucy.obj";
+    const std::string filename = "../models/lucy/lucy.obj";
     // const std::string filename = "../models/teapot.obj";
-    const std::string filename = "../models/icosahedron.obj";
+    // const std::string filename = "../models/icosahedron.obj";
     const bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str());
 
     const auto &mesh = shapes[0].mesh;
+
+    //// DEBUG ////
+    // Transform model to unit cube
+    {
+      RadeonRays::bbox bbox;
+      auto &vs = attrib.vertices;
+      for (int i = 0; i < vs.size(); i += 3) {
+        bbox.grow({ vs[i], vs[i + 1], vs[i + 2] });
+      }
+      const auto center = bbox.center();
+      const auto extent = bbox.extents();
+      const float scale = std::max(extent.x, std::max(extent.y, extent.z));
+      for (int i = 0; i < vs.size(); i += 3) {
+        vs[i + 0] = (vs[i + 0] - center.x) / scale;
+        vs[i + 1] = (vs[i + 1] - center.y) / scale;
+        vs[i + 2] = (vs[i + 2] - center.z) / scale;
+      }
+    }
+    ///////////////
 
     std::vector<int> indices;
     indices.reserve(mesh.indices.size());
@@ -857,11 +880,15 @@ int main()
       indices.push_back(tinyobj_index.vertex_index);
     }
 
-    std::vector<int> numFaceVertices(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
+    std::vector<int> face_vertex_counts(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
+
+    const int vertex_size_bytes = 3 * int(sizeof(float));
+    const int num_vertices = int(attrib.vertices.size()) / 3;
+    const int num_faces = int(face_vertex_counts.size());
 
     test_mesh = std::make_unique<RadeonRays::Mesh>(
-      attrib.vertices.data(), int(attrib.vertices.size()) / 3, 3 * int(sizeof(float)),
-      indices.data(), 0, numFaceVertices.data(), int(numFaceVertices.size()));
+      attrib.vertices.data(), num_vertices, vertex_size_bytes, indices.data(), 0,
+      face_vertex_counts.data(), num_faces);
     test_mesh->SetId(1);
   }
 #endif
@@ -1201,7 +1228,10 @@ int main()
   }
 
   DebugVars debug_vars = {};
-  debug_vars.debug_var_int_1 = 0;
+  debug_vars.debug_var_cam_offset = -1.5f;
+  debug_vars.debug_var_scale = 1.0f;
+  debug_vars.debug_var_float_1 = 0.1f;
+  debug_vars.debug_var_float_2 = 1.0f;
 
   printf("Started\n");
 
@@ -1237,9 +1267,37 @@ int main()
         ImGui::Separator();
         {
           ImGui::AlignTextToFramePadding();
-          ImGui::Text("debug int");
+          ImGui::Text("debug cam offset");
           ImGui::NextColumn();
-          ImGui::DragInt("", &debug_vars.debug_var_int_1, 0.1f);
+          ImGui::DragFloat("##debug cam offset", &debug_vars.debug_var_cam_offset, 0.1f);
+          ImGui::NextColumn();
+        }
+        {
+          ImGui::AlignTextToFramePadding();
+          ImGui::Text("debug scale");
+          ImGui::NextColumn();
+          ImGui::DragFloat("##debug scale", &debug_vars.debug_var_scale, 0.1f);
+          ImGui::NextColumn();
+        }
+        {
+          ImGui::AlignTextToFramePadding();
+          ImGui::Text("debug int 1");
+          ImGui::NextColumn();
+          ImGui::DragInt("##debug int 1", &debug_vars.debug_var_int_1, 0.1f);
+          ImGui::NextColumn();
+        }
+        {
+          ImGui::AlignTextToFramePadding();
+          ImGui::Text("debug float 1");
+          ImGui::NextColumn();
+          ImGui::DragFloat("##debug float 1", &debug_vars.debug_var_float_1, 0.1f);
+          ImGui::NextColumn();
+        }
+        {
+          ImGui::AlignTextToFramePadding();
+          ImGui::Text("debug float 2");
+          ImGui::NextColumn();
+          ImGui::DragFloat("##debug float 2", &debug_vars.debug_var_float_2, 0.1f);
           ImGui::NextColumn();
         }
 
