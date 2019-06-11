@@ -9,7 +9,6 @@ layout(location = 0) out vec2 texCoords;
 
 void main()
 {
-  // TODO: remove this: multiply by 0.8 to see the quad for now.
   vec2 v = verts[gl_VertexIndex];
   gl_Position = vec4(v, 1, 1);
   texCoords = 0.5 * v + 0.5;

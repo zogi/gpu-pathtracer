@@ -114,6 +114,8 @@ static void FramePresent(ImGui_ImplVulkanH_WindowData *wd);
 static FrameStartData FrameRenderStart(ImGui_ImplVulkanH_WindowData *wd);
 static void FrameRenderUI(ImGui_ImplVulkanH_WindowData *wd);
 
+// === Window ===
+
 struct Extent {
   int width;
   int height;
@@ -164,6 +166,8 @@ class Window {
     auto &wd = window_data_.imgui_data;
     return wd.BackBuffer[wd.Frames[wd.FrameIndex].BackbufferIndex];
   }
+
+  const Camera &camera() const { return camera_; }
 
  private:
   GLFWwindowPtr window_;
@@ -228,8 +232,8 @@ Window::Window(int width, int height)
   }
 
   // Init camera.
-  camera_.eye_pos = glm::vec3(-1.6, 4.1, 4.4);
-  camera_.orientation = glm::quatLookAt(glm::vec3(0.66, -0.48, -0.58), glm::vec3(0, 1, 0));
+  camera_.eye_pos = glm::vec3(-1, 0, 0);
+  camera_.orientation = glm::quatLookAt(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0));
   camera_controller_.setWindow(window_.get());
   camera_controller_.setCamera(&camera_);
   camera_controller_.setEnabled(true);
@@ -433,7 +437,11 @@ struct DebugVars {
 };
 
 struct ViewData {
+  glm::mat4 view_transform;
+  glm::vec3 eye_pos;
+  int32_t _pad1[1];
   float image_size_norm[2];
+  int32_t _pad2[2];
 };
 
 #pragma pack(pop)
@@ -842,7 +850,7 @@ int main()
   GPUBufferTransfer::init(32 * 1024 * 1024);
 
   // Init window.
-  auto window = std::make_unique<Window>(1280, 960);
+  auto window = std::make_unique<Window>(960, 720);
   window->setBackgroudColor(ImVec4(0.45f, 0.55f, 0.60f, 1.00f));
 
   // Load test geometry.
@@ -1263,7 +1271,7 @@ int main()
   }
 
   DebugVars debug_vars = {};
-  debug_vars.debug_var_cam_offset = -1.0f;
+  debug_vars.debug_var_cam_offset = 0.0f;
   debug_vars.debug_var_scale = 1.0f;
   debug_vars.debug_var_float_1 = 0.47f;
   debug_vars.debug_var_float_2 = 0.81f;
@@ -1293,12 +1301,18 @@ int main()
     {
       ViewData view_data = {};
       const Extent extent = window->extent<Extent>();
-      // constexpr float kPi = 3.
+
+      const auto &cam = window->camera();
+      const auto view = glm::toMat4(cam.orientation);
+      view_data.view_transform = glm::transpose(view);
+
+      view_data.eye_pos = cam.eye_pos;
 
       const float fovy_rad = glm::radians<float>(ui_state.fovy_deg);
-      const float height = 2.0f * std::tanf(0.5 * fovy_rad);
+      const float height = 2.0f * std::tanf(0.5f * fovy_rad);
       view_data.image_size_norm[0] = height * float(extent.width) / float(extent.height);
       view_data.image_size_norm[1] = height;
+
       const auto span = gsl::as_bytes(gsl::make_span(&view_data, 1));
       GPUBufferTransfer::upload(span, view_uniforms.buffer, VK_ACCESS_SHADER_READ_BIT);
     }

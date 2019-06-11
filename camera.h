@@ -24,6 +24,7 @@ class CameraController {
     , mLastAction(ACTION_NONE)
     , mEnabled(false)
   {
+    mMotionKeyState.fill(false);
   }
   void setWindow(GLFWwindow *window) { mWindow = window; }
   void setCamera(Camera *camera_) { mCamera = camera_; }

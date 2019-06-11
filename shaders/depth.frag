@@ -6,11 +6,13 @@
 #include "RadeonRays/bvh.glslh"
 
 struct ViewData {
+  mat4 view_transform;
+  vec3 eye_pos;
   // Extent of the image at unit distance from camera center.
   vec2 image_size_norm;
 };
 
-layout(std140, binding = 4) uniform ViewDataBlock
+layout(std140, binding = 4, row_major) uniform ViewDataBlock
 {
 	ViewData view_data;
 };
@@ -42,22 +44,26 @@ void main() {
 
   // Construct ray in view space.
   ray r;
+
   r.extra.x = ~0; // shape mask
   r.extra.y = 1;  // ray is active
-  float maxDist = 1000.0;
-  r.o = vec4(0, 0, 0, maxDist);
-  // TODO: compute ray.xy properly using fov and aspect ratio
-  float time = 0; // for motion blur
-  vec2 dxy = (texCoords - 0.5) * view_data.image_size_norm;
+
+  r.o.xyz = vec3(0, 0, 0);
+  r.o.w = 1000.0; // max distance
+
+  vec2 dxy = (texCoords - 0.5);
+  dxy *= view_data.image_size_norm;
   dxy.y = -dxy.y;
   dxy *= debug_vars.debug_var_scale;
-  //vec2 dxy = vec2(0, 0);
-  //r.d = vec4(dxy, -1, time);
-  r.d = vec4(1, dxy.yx, time);
+  r.d.xyz = vec3(dxy.xy, -1);
+  r.d.w = 0; // time for motion blur
+
+  // Transform to world space.
+  r.o.xyz = view_data.eye_pos;
+  // TODO: use quaternion?
+  r.d.xyz = mat3(view_data.view_transform) * r.d.xyz;
   r.d.xyz = normalize(r.d.xyz);
 
-  // TODO: transform ray into world space.
-  //r.o.z += debug_vars.debug_var_cam_offset;
   r.o.x += debug_vars.debug_var_cam_offset;
 
 #if 1
