@@ -422,6 +422,8 @@ static void CleanupVulkan();
 
 // ===
 
+#pragma pack(push, 1)
+
 struct DebugVars {
   float debug_var_cam_offset;
   float debug_var_scale;
@@ -429,6 +431,12 @@ struct DebugVars {
   float debug_var_float_1;
   float debug_var_float_2;
 };
+
+struct ViewData {
+  float image_size_norm[2];
+};
+
+#pragma pack(pop)
 
 // === SPIR-V reflection utilities ===
 
@@ -709,8 +717,7 @@ void terminate()
   vkDestroyCommandPool(g_vulkan.device, detail::g_command_pool, nullptr);
 }
 
-/// Blocks until transfer is complete.
-void uploadSync(gsl::span<const gsl::byte> source, VkBuffer dest, VkAccessFlags dest_access = VK_ACCESS_MEMORY_READ_BIT)
+void upload(gsl::span<const gsl::byte> source, VkBuffer dest, VkAccessFlags dest_access = VK_ACCESS_MEMORY_READ_BIT)
 {
   assert(source.size_bytes() <= gsl::index(detail::g_staging.size));
   if (source.size_bytes() > gsl::index(detail::g_staging.size)) {
@@ -762,7 +769,7 @@ void uploadSync(gsl::span<const gsl::byte> source, VkBuffer dest, VkAccessFlags 
   VKCHECK(vkDeviceWaitIdle(g_vulkan.device));
 }
 
-void downloadSync(VkBuffer source, gsl::span<gsl::byte> dest, VkAccessFlags source_access = VK_ACCESS_MEMORY_WRITE_BIT)
+void download(VkBuffer source, gsl::span<gsl::byte> dest, VkAccessFlags source_access = VK_ACCESS_MEMORY_WRITE_BIT)
 {
   assert(dest.size_bytes() <= gsl::index(detail::g_staging.size));
   if (dest.size_bytes() > gsl::index(detail::g_staging.size)) {
@@ -835,7 +842,7 @@ int main()
   GPUBufferTransfer::init(32 * 1024 * 1024);
 
   // Init window.
-  auto window = std::make_unique<Window>(1000, 1000);
+  auto window = std::make_unique<Window>(1280, 960);
   window->setBackgroudColor(ImVec4(0.45f, 0.55f, 0.60f, 1.00f));
 
   // Load test geometry.
@@ -957,9 +964,9 @@ int main()
     const auto vertices_bytes = gsl::as_bytes(gsl::make_span(vertices));
     const auto faces_bytes = gsl::as_bytes(gsl::make_span(faces));
 
-    GPUBufferTransfer::uploadSync(nodes_bytes, bvh_nodes_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
-    GPUBufferTransfer::uploadSync(vertices_bytes, vertices_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
-    GPUBufferTransfer::uploadSync(faces_bytes, faces_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
+    GPUBufferTransfer::upload(nodes_bytes, bvh_nodes_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
+    GPUBufferTransfer::upload(vertices_bytes, vertices_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
+    GPUBufferTransfer::upload(faces_bytes, faces_gpu.buffer, VK_ACCESS_SHADER_READ_BIT);
 
     // Test
 #if 0
@@ -968,7 +975,7 @@ int main()
       vkGetBufferMemoryRequirements(g_vulkan.device, bvh_nodes_gpu.buffer, &mem_reqs);
       std::vector<RadeonRays::Node> nodes_(mem_reqs.size / sizeof(RadeonRays::Node));
       const auto nodes_bytes_ = gsl::as_writeable_bytes(gsl::make_span(nodes_));
-      GPUBufferTransfer::downloadSync(bvh_nodes_gpu.buffer, nodes_bytes_);
+      GPUBufferTransfer::download(bvh_nodes_gpu.buffer, nodes_bytes_);
     }
 
     {
@@ -976,7 +983,7 @@ int main()
       vkGetBufferMemoryRequirements(g_vulkan.device, vertices_gpu.buffer, &mem_reqs);
       std::vector<RadeonRays::Vertex> vertices_(mem_reqs.size / sizeof(RadeonRays::Vertex));
       const auto vertices_bytes_ = gsl::as_writeable_bytes(gsl::make_span(vertices_));
-      GPUBufferTransfer::downloadSync(vertices_gpu.buffer, vertices_bytes_);
+      GPUBufferTransfer::download(vertices_gpu.buffer, vertices_bytes_);
     }
 
     {
@@ -984,7 +991,7 @@ int main()
       vkGetBufferMemoryRequirements(g_vulkan.device, faces_gpu.buffer, &mem_reqs);
       std::vector<RadeonRays::Face> faces_(mem_reqs.size / sizeof(RadeonRays::Face));
       const auto faces_bytes_ = gsl::as_writeable_bytes(gsl::make_span(faces_));
-      GPUBufferTransfer::downloadSync(faces_gpu.buffer, faces_bytes_);
+      GPUBufferTransfer::download(faces_gpu.buffer, faces_bytes_);
     }
 #endif
   }
@@ -1187,14 +1194,16 @@ int main()
 
   VkDescriptorPool descriptor_pool = {};
   {
-    VkDescriptorPoolSize pool_size = {};
-    pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    pool_size.descriptorCount = 3;
+    VkDescriptorPoolSize pool_size[2] = {};
+    pool_size[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    pool_size[0].descriptorCount = 8;
+    pool_size[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    pool_size[1].descriptorCount = 8;
 
     VkDescriptorPoolCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     create_info.maxSets = 1;
-    create_info.poolSizeCount = 1;
-    create_info.pPoolSizes = &pool_size;
+    create_info.poolSizeCount = ARRAYSIZE(pool_size);
+    create_info.pPoolSizes = pool_size;
     VKCHECK(vkCreateDescriptorPool(g_vulkan.device, &create_info, nullptr, &descriptor_pool));
   }
 
@@ -1202,40 +1211,69 @@ int main()
   {
     VkDescriptorSetAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
     allocate_info.descriptorPool = descriptor_pool;
-    allocate_info.descriptorSetCount = ray_depth_program.desc_set_layouts.size();
+    allocate_info.descriptorSetCount = 1; // uint32_t(ray_depth_program.desc_set_layouts.size());
     allocate_info.pSetLayouts = ray_depth_program.desc_set_layouts.data();
     VKCHECK(vkAllocateDescriptorSets(g_vulkan.device, &allocate_info, &descriptor_set));
   }
 
-  {
-    VkBuffer buffers[] = { bvh_nodes_gpu.buffer, vertices_gpu.buffer, faces_gpu.buffer };
+  GPUBuffer view_uniforms = createGPUBuffer(
+    sizeof(ViewData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    VkDescriptorBufferInfo buffer_infos[ARRAYSIZE(buffers)];
-    for (int i = 0; i < ARRAYSIZE(buffers); ++i) {
-      VkDescriptorBufferInfo &buffer_info = buffer_infos[i];
-      buffer_info.buffer = buffers[i];
+  {
+    VkBuffer storage_buffers[] = { bvh_nodes_gpu.buffer, vertices_gpu.buffer, faces_gpu.buffer };
+    VkDescriptorBufferInfo storage_buffer_infos[ARRAYSIZE(storage_buffers)];
+    for (int i = 0; i < ARRAYSIZE(storage_buffers); ++i) {
+      VkDescriptorBufferInfo &buffer_info = storage_buffer_infos[i];
+      buffer_info.buffer = storage_buffers[i];
       buffer_info.offset = 0;
       buffer_info.range = VK_WHOLE_SIZE;
     }
 
-    VkWriteDescriptorSet write_descriptor_set = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-    write_descriptor_set.dstSet = descriptor_set;
-    write_descriptor_set.dstBinding = BVH_SET_BINDING;
-    write_descriptor_set.dstArrayElement = 0;
-    write_descriptor_set.descriptorCount = ARRAYSIZE(buffer_infos);
-    write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    write_descriptor_set.pBufferInfo = buffer_infos;
+    VkDescriptorBufferInfo uniform_buffer_info = {};
+    uniform_buffer_info.buffer = view_uniforms.buffer;
+    uniform_buffer_info.offset = 0;
+    uniform_buffer_info.range = VK_WHOLE_SIZE;
 
-    vkUpdateDescriptorSets(g_vulkan.device, 1, &write_descriptor_set, 0, nullptr);
+    VkWriteDescriptorSet write_descriptor_sets[2];
+    {
+      VkWriteDescriptorSet &write_descriptor_set = write_descriptor_sets[0];
+      write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      write_descriptor_set.dstSet = descriptor_set;
+      write_descriptor_set.dstBinding = BVH_SET_BINDING;
+      write_descriptor_set.dstArrayElement = 0;
+      write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+      write_descriptor_set.descriptorCount = ARRAYSIZE(storage_buffer_infos);
+      write_descriptor_set.pBufferInfo = storage_buffer_infos;
+    }
+    {
+      VkWriteDescriptorSet &write_descriptor_set = write_descriptor_sets[1];
+      write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      write_descriptor_set.dstSet = descriptor_set;
+      // TODO: parse from shader?
+      write_descriptor_set.dstBinding = 4;
+      write_descriptor_set.dstArrayElement = 0;
+      write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+      write_descriptor_set.descriptorCount = 1;
+      write_descriptor_set.pBufferInfo = &uniform_buffer_info;
+    }
+
+    vkUpdateDescriptorSets(
+      g_vulkan.device, ARRAYSIZE(write_descriptor_sets), write_descriptor_sets, 0, nullptr);
   }
 
   DebugVars debug_vars = {};
-  debug_vars.debug_var_cam_offset = -1.5f;
+  debug_vars.debug_var_cam_offset = -1.0f;
   debug_vars.debug_var_scale = 1.0f;
-  debug_vars.debug_var_float_1 = 0.1f;
-  debug_vars.debug_var_float_2 = 1.0f;
+  debug_vars.debug_var_float_1 = 0.47f;
+  debug_vars.debug_var_float_2 = 0.81f;
 
   printf("Started\n");
+
+  struct {
+    bool settings_window_open = true;
+    float fovy_deg = 70.0f;
+  } ui_state;
 
   while (!window->shouldClose()) {
     glfwPollEvents();
@@ -1251,12 +1289,22 @@ int main()
       window->tick(delta_time);
     }
 
+    // Upload uniforms
+    {
+      ViewData view_data = {};
+      const Extent extent = window->extent<Extent>();
+      // constexpr float kPi = 3.
+
+      const float fovy_rad = glm::radians<float>(ui_state.fovy_deg);
+      const float height = 2.0f * std::tanf(0.5 * fovy_rad);
+      view_data.image_size_norm[0] = height * float(extent.width) / float(extent.height);
+      view_data.image_size_norm[1] = height;
+      const auto span = gsl::as_bytes(gsl::make_span(&view_data, 1));
+      GPUBufferTransfer::upload(span, view_uniforms.buffer, VK_ACCESS_SHADER_READ_BIT);
+    }
+
     // UI
     {
-      struct {
-        bool settings_window_open = true;
-      } ui_state;
-
       // Settings window
       const auto uiSettingsWindow = [&ui_state, &debug_vars]() {
         ImGui::SetNextWindowSize(ImVec2(430, 450), ImGuiCond_FirstUseEver);
@@ -1267,41 +1315,28 @@ int main()
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
         ImGui::Columns(2);
         ImGui::Separator();
-        {
+        const auto int_slider = [](const std::string &label, int &x) {
           ImGui::AlignTextToFramePadding();
-          ImGui::Text("debug cam offset");
+          ImGui::Text(label.c_str());
           ImGui::NextColumn();
-          ImGui::DragFloat("##debug cam offset", &debug_vars.debug_var_cam_offset, 0.1f);
+          const std::string tag = "##" + label;
+          ImGui::DragInt(tag.c_str(), &x, 0.1f);
           ImGui::NextColumn();
-        }
-        {
+        };
+        const auto float_slider = [](const std::string &label, float &x) {
           ImGui::AlignTextToFramePadding();
-          ImGui::Text("debug scale");
+          ImGui::Text(label.c_str());
           ImGui::NextColumn();
-          ImGui::DragFloat("##debug scale", &debug_vars.debug_var_scale, 0.1f);
+          const std::string tag = "##" + label;
+          ImGui::DragFloat(tag.c_str(), &x, 0.1f, 0, 0, "%.2f");
           ImGui::NextColumn();
-        }
-        {
-          ImGui::AlignTextToFramePadding();
-          ImGui::Text("debug int 1");
-          ImGui::NextColumn();
-          ImGui::DragInt("##debug int 1", &debug_vars.debug_var_int_1, 0.1f);
-          ImGui::NextColumn();
-        }
-        {
-          ImGui::AlignTextToFramePadding();
-          ImGui::Text("debug float 1");
-          ImGui::NextColumn();
-          ImGui::DragFloat("##debug float 1", &debug_vars.debug_var_float_1, 0.1f);
-          ImGui::NextColumn();
-        }
-        {
-          ImGui::AlignTextToFramePadding();
-          ImGui::Text("debug float 2");
-          ImGui::NextColumn();
-          ImGui::DragFloat("##debug float 2", &debug_vars.debug_var_float_2, 0.1f);
-          ImGui::NextColumn();
-        }
+        };
+        float_slider("Y fov (deg)", ui_state.fovy_deg);
+        float_slider("debug cam offset", debug_vars.debug_var_cam_offset);
+        float_slider("debug scale", debug_vars.debug_var_scale);
+        int_slider("debug int 1", debug_vars.debug_var_int_1);
+        float_slider("debug float 1", debug_vars.debug_var_float_1);
+        float_slider("debug float 2", debug_vars.debug_var_float_2);
 
         ImGui::PopStyleVar();
         ImGui::End();
@@ -1406,6 +1441,7 @@ int main()
   destroyGPUBuffer(bvh_nodes_gpu);
   destroyGPUBuffer(vertices_gpu);
   destroyGPUBuffer(faces_gpu);
+  destroyGPUBuffer(view_uniforms);
 
   GPUBufferTransfer::terminate();
 

@@ -5,6 +5,17 @@
 #include "config-inc.h"
 #include "RadeonRays/bvh.glslh"
 
+struct ViewData {
+  // Extent of the image at unit distance from camera center.
+  vec2 image_size_norm;
+};
+
+layout(std140, binding = 4) uniform ViewDataBlock
+{
+	ViewData view_data;
+};
+
+
 struct DebugVars {
   float debug_var_cam_offset;
   float debug_var_scale;
@@ -13,7 +24,7 @@ struct DebugVars {
   float debug_var_float_2;
 };
 
-layout(push_constant) uniform block
+layout(push_constant) uniform DebugVarsBlock
 {
 	DebugVars debug_vars;
 };
@@ -37,12 +48,13 @@ void main() {
   r.o = vec4(0, 0, 0, maxDist);
   // TODO: compute ray.xy properly using fov and aspect ratio
   float time = 0; // for motion blur
-  vec2 dxy = texCoords - 0.5;
-  dxy.y *= -1;
+  vec2 dxy = (texCoords - 0.5) * view_data.image_size_norm;
+  dxy.y = -dxy.y;
   dxy *= debug_vars.debug_var_scale;
   //vec2 dxy = vec2(0, 0);
   //r.d = vec4(dxy, -1, time);
   r.d = vec4(1, dxy.yx, time);
+  r.d.xyz = normalize(r.d.xyz);
 
   // TODO: transform ray into world space.
   //r.o.z += debug_vars.debug_var_cam_offset;
