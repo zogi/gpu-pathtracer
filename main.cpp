@@ -864,7 +864,7 @@ int main()
     std::vector<tinyobj::material_t> materials;
     std::string warn;
     std::string err;
-    const std::string filename = "../models/lucy/lucy.obj";
+    const std::string filename = "../models/lucy/lucy_watertight.obj";
     // const std::string filename = "../models/teapot.obj";
     // const std::string filename = "../models/icosahedron.obj";
     const bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str());
@@ -872,7 +872,7 @@ int main()
     const auto &mesh = shapes[0].mesh;
 
     //// DEBUG ////
-    // Transform model to unit cube
+    // Scale model into unit cube.
     {
       RadeonRays::bbox bbox;
       auto &vs = attrib.vertices;
@@ -890,20 +890,46 @@ int main()
     }
     ///////////////
 
+    std::vector<float> vertices;
+    vertices.reserve(3 * mesh.indices.size());
     std::vector<int> indices;
     indices.reserve(mesh.indices.size());
-    for (const auto &tinyobj_index : mesh.indices) {
-      indices.push_back(tinyobj_index.vertex_index);
+    // for (const auto &tinyobj_index : mesh.indices) {
+    //  indices.push_back(tinyobj_index.vertex_index);
+    //}
+    const float kGrowScale = 1e-4f;
+    {
+      auto &vs = attrib.vertices;
+      for (int i = 0; i < mesh.indices.size(); i += 3) {
+        glm::vec3 v[3];
+        for (int j = 0; j < 3; ++j) {
+          const int idx = mesh.indices[i + j].vertex_index;
+          v[j] = { vs[3 * idx + 0], vs[3 * idx + 1], vs[3 * idx + 2] };
+        }
+        const glm::vec3 center = (v[0] + v[1] + v[2]) / 3.0f;
+        for (int j = 0; j < 3; ++j) {
+          v[j] = center + (v[j] - center) * (1.0f + kGrowScale);
+        }
+        for (int j = 0; j < 3; ++j) {
+          indices.push_back(int(vertices.size() / 3));
+          vertices.push_back(v[j].x);
+          vertices.push_back(v[j].y);
+          vertices.push_back(v[j].z);
+        }
+      }
     }
 
-    std::vector<int> face_vertex_counts(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
+    // std::vector<int> face_vertex_counts(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
+    std::vector<int> face_vertex_counts(indices.size() / 3, 3);
+
+    // const auto& vertices = attrib.vertices;
 
     const int vertex_size_bytes = 3 * int(sizeof(float));
-    const int num_vertices = int(attrib.vertices.size()) / 3;
+    const int num_vertices = int(vertices.size()) / 3;
     const int num_faces = int(face_vertex_counts.size());
 
     test_mesh = std::make_unique<RadeonRays::Mesh>(
-      attrib.vertices.data(), num_vertices, vertex_size_bytes, indices.data(), 0,
+      vertices.data(), num_vertices, vertex_size_bytes, indices.data(), 0,
       face_vertex_counts.data(), num_faces);
     test_mesh->SetId(1);
   }
@@ -922,11 +948,14 @@ int main()
   std::unique_ptr<RadeonRays::Mesh> fallback_mesh;
   if (world.shapes_.empty()) {
     // const float my_vertices[] = { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f };
-    const float my_vertices[] = { -1.0f, -0.5f, 0.0f, 1.0f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f };
-    const int my_indices[] = { 0, 1, 2 };
-    const int my_numfacevertices[] = { 3 };
+    // const float my_vertices[] = { -1.0f, -0.5f, 0.0f, 1.0f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f };
+    const float my_vertices[] = { 0.0123f, -0.4312f, -1.0321f, 0.3123f, -0.5231f, 1.0231f,
+                                  0.1213f, 0.5132f,  1.0312f,  0.0321f, 0.5231f,  -1.0123f };
+    const int my_indices[] = { 0, 1, 2, 0, 2, 3 };
+    const int my_numfacevertices[] = { 3, 3 };
     fallback_mesh = std::make_unique<RadeonRays::Mesh>(
-      my_vertices, 3, 3 * int(sizeof(float)), my_indices, 0, my_numfacevertices, 1);
+      my_vertices, int(ARRAYSIZE(my_vertices)) / 3, 3 * int(sizeof(float)), my_indices, 0,
+      my_numfacevertices, int(ARRAYSIZE(my_numfacevertices)));
     fallback_mesh->SetId(0);
     world.AttachShape(fallback_mesh.get());
   }
