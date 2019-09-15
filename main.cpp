@@ -890,39 +890,15 @@ int main()
     }
     ///////////////
 
-    std::vector<float> vertices;
-    vertices.reserve(3 * mesh.indices.size());
     std::vector<int> indices;
     indices.reserve(mesh.indices.size());
-    // for (const auto &tinyobj_index : mesh.indices) {
-    //  indices.push_back(tinyobj_index.vertex_index);
-    //}
-    const float kGrowScale = 1e-4f;
-    {
-      auto &vs = attrib.vertices;
-      for (int i = 0; i < mesh.indices.size(); i += 3) {
-        glm::vec3 v[3];
-        for (int j = 0; j < 3; ++j) {
-          const int idx = mesh.indices[i + j].vertex_index;
-          v[j] = { vs[3 * idx + 0], vs[3 * idx + 1], vs[3 * idx + 2] };
-        }
-        const glm::vec3 center = (v[0] + v[1] + v[2]) / 3.0f;
-        for (int j = 0; j < 3; ++j) {
-          v[j] = center + (v[j] - center) * (1.0f + kGrowScale);
-        }
-        for (int j = 0; j < 3; ++j) {
-          indices.push_back(int(vertices.size() / 3));
-          vertices.push_back(v[j].x);
-          vertices.push_back(v[j].y);
-          vertices.push_back(v[j].z);
-        }
-      }
+    for (const auto &tinyobj_index : mesh.indices) {
+      indices.push_back(tinyobj_index.vertex_index);
     }
 
-    // std::vector<int> face_vertex_counts(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
-    std::vector<int> face_vertex_counts(indices.size() / 3, 3);
+    std::vector<int> face_vertex_counts(mesh.num_face_vertices.begin(), mesh.num_face_vertices.end());
 
-    // const auto& vertices = attrib.vertices;
+    const auto &vertices = attrib.vertices;
 
     const int vertex_size_bytes = 3 * int(sizeof(float));
     const int num_vertices = int(vertices.size()) / 3;

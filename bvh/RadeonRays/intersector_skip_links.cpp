@@ -29,6 +29,17 @@ THE SOFTWARE.
 
 #include <algorithm>
 
+namespace {
+  constexpr float kBoundsGrowthEps = 1e-4f;
+
+  void scaleBounds(RadeonRays::bbox& bounds, float scale)
+  {
+    const auto center = bounds.center();
+    bounds.pmin = center + (bounds.pmin - center) * scale;
+    bounds.pmax = center + (bounds.pmax - center) * scale;
+  }
+}
+
 // Preferred work group size for Radeon devices
 static int const kWorkGroupSize = 64;
 
@@ -116,7 +127,9 @@ void BvhBuilder::updateBvh(const World &world)
 
     for (int j = 0; j < mesh->num_faces(); ++j) {
       // Here we directly get world space bounds
-      mesh->GetFaceBounds(j, false, bounds[m_mesh_faces_start_idx[i] + j]);
+      auto& box = bounds[m_mesh_faces_start_idx[i] + j];
+      mesh->GetFaceBounds(j, false, box);
+      scaleBounds(box, 1 + kBoundsGrowthEps);
     }
   }
 
@@ -134,7 +147,9 @@ void BvhBuilder::updateBvh(const World &world)
     for (int j = 0; j < mesh->num_faces(); ++j) {
       bbox tmp;
       mesh->GetFaceBounds(j, true, tmp);
-      bounds[m_mesh_faces_start_idx[i] + j] = transform_bbox(tmp, m);
+      auto& box = bounds[m_mesh_faces_start_idx[i] + j];
+      box = transform_bbox(tmp, m);
+      scaleBounds(box, 1 + kBoundsGrowthEps);
     }
   }
 

@@ -167,8 +167,7 @@ bool IntersectTriangle( in ray r, in vec3 v1, in vec3 v2, in vec3 v3, inout Inte
     const float  b2 = dot(r.d.xyz, s2) * invd;
     const float temp = max(0, dot(e2, s2) * invd);
     
-    if (b1 < 0.f || b1 > 1.f || b2 < 0.f || b1 + b2 > 1.f || temp < 0.f || temp > isect.uvwt.w)
-    // if (b1 < -EPS || b1 > 1.f + EPS || b2 < -EPS || b1 + b2 > 1 + EPS || temp < -EPS || temp > isect.uvwt.w + EPS)
+    if (b1 < -EPS || b1 > 1.f + EPS || b2 < -EPS || b1 + b2 > 1 + EPS || temp < -EPS || temp > isect.uvwt.w + EPS)
     {
         return false;
     }
@@ -191,7 +190,7 @@ bool IntersectTriangleP( in ray r, in vec3 v1, in vec3 v2, in vec3 v3 )
     const float  b2 = dot(r.d.xyz, s2) * invd;
     const float temp = dot(e2, s2) * invd;
 
-    if ( b1 < 0.f || b1 > 1.f || b2 < 0.f || b1 + b2 > 1.f || temp < 0.f || temp > r.o.w )
+    if ( b1 < -EPS || b1 > 1.f + EPS || b2 < -EPS || b1 + b2 > 1.f + EPS || temp < -EPS || temp > r.o.w + EPS )
     {
         return false;
     }
