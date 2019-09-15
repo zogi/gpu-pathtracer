@@ -5,30 +5,24 @@
 struct Camera {
   glm::quat orientation;
   glm::vec3 eye_pos;
-  float pivot_distance;
 
-  Camera() : pivot_distance(0.01f) {}
+  glm::vec3 pivot = {};
+
   glm::vec3 getForwardVector() const { return glm::rotate(orientation, glm::vec3(0, 0, -1)); }
+  glm::vec3 getUpVector() const { return glm::rotate(orientation, glm::vec3(0, 1, 0)); }
+  glm::vec3 getRightVector() const { return glm::rotate(orientation, glm::vec3(1, 0, 0)); }
+
+  float getPivotDistance() const { return glm::distance(eye_pos, pivot); }
 };
 
 // Modified version of cinder's CameraController class (https://github.com/cinder/Cinder).
 
 class CameraController {
  public:
-  CameraController(GLFWwindow *window = nullptr)
-    : mWindow(window)
-    , mCamera(nullptr)
-    , mInitialPivotDistance(0.01f)
-    , mMouseWheelMultiplier(-1.1f)
-    , mMinimumPivotDistance(0.01f)
-    , mLastAction(ACTION_NONE)
-    , mEnabled(false)
-  {
-    mMotionKeyState.fill(false);
-  }
-  void setWindow(GLFWwindow *window) { mWindow = window; }
-  void setCamera(Camera *camera_) { mCamera = camera_; }
-  void setEnabled(bool enable) { mEnabled = enable; }
+  CameraController(GLFWwindow *window = nullptr);
+  void setWindow(GLFWwindow *window) { m_window = window; }
+  void setCamera(Camera *camera_) { m_camera = camera_; }
+  void setEnabled(bool enable) { m_enabled = enable; }
 
   void tick(double time_delta); // Called once each frame.
 
@@ -40,23 +34,14 @@ class CameraController {
  private:
   enum { ACTION_NONE, ACTION_ZOOM, ACTION_PAN, ACTION_TUMBLE };
 
-  glm::ivec2 getWindowSize() const
-  {
-    if (!mWindow)
-      return {};
-    int w, h;
-    glfwGetWindowSize(mWindow, &w, &h);
-    return { w, h };
-  }
+  glm::ivec2 getWindowSize() const;
 
-  glm::vec2 mInitialMousePos;
-  Camera mInitialCam;
-  Camera *mCamera;
-  float mInitialPivotDistance;
-  float mMouseWheelMultiplier, mMinimumPivotDistance;
-  int mLastAction;
-  std::array<bool, 6> mMotionKeyState;
+  GLFWwindow *m_window;
+  Camera *m_camera;
+  bool m_enabled;
 
-  GLFWwindow *mWindow;
-  bool mEnabled;
+  glm::vec2 m_initial_mouse_pos;
+  Camera m_initial_cam;
+  int m_last_action;
+  std::array<bool, 6> m_motion_key_state;
 };
