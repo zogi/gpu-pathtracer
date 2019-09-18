@@ -7,6 +7,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(cmake/glslang.cmake)
 
+# Granite
+option(GRANITE_VULKAN_FOSSILIZE "" ON)
+option(SPIRV_HEADERS_SKIP_EXAMPLES "" ON)
+option(SKIP_SPIRV_TOOLS_INSTAL "" ON)
+option(SHADERC_SKIP_TESTS "" ON)
+option(GLFW_BUILD_EXAMPLES "" OFF)
+option(GLFW_BUILD_TESTS "" OFF)
+option(GLFW_BUILD_DOCS "" OFF)
+option(GLFW_INSTALL "" OFF)
+option(GLFW_VULKAN_STATIC "" OFF)
+option(GLFW_DOCUMENT_INTERNALS "" OFF)
+add_subdirectory(external/granite)
+
 # Vulkan
 find_package(Vulkan REQUIRED)
 
@@ -63,11 +76,12 @@ target_include_directories(RadeonRaysBVH PUBLIC
 )
 target_link_libraries(RadeonRaysBVH GSL)
 
-# stb
-add_library(stb INTERFACE)
-target_include_directories(stb SYSTEM INTERFACE
-  ${CMAKE_CURRENT_LIST_DIR}/external/stb
-)
+# Granite already includes stb
+# # stb
+# add_library(stb INTERFACE)
+# target_include_directories(stb SYSTEM INTERFACE
+#   ${CMAKE_CURRENT_LIST_DIR}/external/stb
+# )
 
 # Tiny OBJ loader
 option(TINYOBJLOADER_USE_DOUBLE "" OFF)
@@ -81,14 +95,15 @@ target_include_directories(glm SYSTEM INTERFACE
   ${PROJECT_SOURCE_DIR}/external/glm
 )
 
-# glfw
-option(GLFW_BUILD_EXAMPLES "" OFF)
-option(GLFW_BUILD_TESTS "" OFF)
-option(GLFW_BUILD_DOCS "" OFF)
-option(GLFW_INSTALL "" OFF)
-option(GLFW_VULKAN_STATIC "" OFF)
-option(GLFW_DOCUMENT_INTERNALS "" OFF)
-add_subdirectory(external/glfw)
+# Granite already includes glfw
+# # glfw
+# option(GLFW_BUILD_EXAMPLES "" OFF)
+# option(GLFW_BUILD_TESTS "" OFF)
+# option(GLFW_BUILD_DOCS "" OFF)
+# option(GLFW_INSTALL "" OFF)
+# option(GLFW_VULKAN_STATIC "" OFF)
+# option(GLFW_DOCUMENT_INTERNALS "" OFF)
+# add_subdirectory(external/glfw)
 
 # imgui
 file(GLOB IMGUI_SRC external/imgui/*.cpp)
@@ -154,5 +169,5 @@ target_include_directories(GpuPathTracer PRIVATE
   ${PROJECT_BINARY_DIR}/include
 )
 target_link_libraries(GpuPathTracer
-  RadeonRaysBVH stb tinyobjloader windowlib glm spirv_reflect GSL
+  RadeonRaysBVH stb tinyobjloader windowlib glm spirv_reflect GSL granite
 )
