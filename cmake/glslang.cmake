@@ -1,6 +1,6 @@
 find_program(GLSLANG
   NAMES glslang glslangValidator
-  PATHS $ENV{VULKAN_DIR}/bin $ENV{VULKAN_DIR}/bin32
+  PATHS $ENV{VULKAN_SDK}/bin $ENV{VULKAN_SDK}/bin32
 )
 
 macro(add_spirv_shader GLSL_SOURCE_FILE)

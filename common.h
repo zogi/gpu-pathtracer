@@ -40,6 +40,14 @@
 
 #include <bvh_builder.h>
 
+#include <spirv_reflect.h>
+
+#include <shaders/depth.frag.spv.h>
+#include <shaders/quad.vert.spv.h>
+
+#include "camera.h"
+#include "shaders/config-inc.h"
+
 #ifndef ARRAYSIZE
 #define ARRAYSIZE(array) (sizeof(array) / sizeof((array)[0]))
 #endif

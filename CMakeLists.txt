@@ -7,18 +7,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(cmake/glslang.cmake)
 
-# Granite
-option(GRANITE_VULKAN_FOSSILIZE "" ON)
-option(SPIRV_HEADERS_SKIP_EXAMPLES "" ON)
-option(SKIP_SPIRV_TOOLS_INSTAL "" ON)
-option(SHADERC_SKIP_TESTS "" ON)
-option(GLFW_BUILD_EXAMPLES "" OFF)
-option(GLFW_BUILD_TESTS "" OFF)
-option(GLFW_BUILD_DOCS "" OFF)
-option(GLFW_INSTALL "" OFF)
-option(GLFW_VULKAN_STATIC "" OFF)
-option(GLFW_DOCUMENT_INTERNALS "" OFF)
-add_subdirectory(external/granite)
+# # Granite
+# option(GRANITE_VULKAN_FOSSILIZE "" ON)
+# option(GLFW_BUILD_EXAMPLES "" OFF)
+# option(GLFW_BUILD_TESTS "" OFF)
+# option(GLFW_BUILD_DOCS "" OFF)
+# option(GLFW_INSTALL "" OFF)
+# option(GLFW_VULKAN_STATIC "" OFF)
+# option(GLFW_DOCUMENT_INTERNALS "" OFF)
+set(SPIRV_HEADERS_SKIP_EXAMPLES ON CACHE STRING "" FORCE)
+set(SKIP_SPIRV_TOOLS_INSTAL OFF CACHE STRING "" FORCE)
+set(SHADERC_SKIP_TESTS ON CACHE STRING "" FORCE)
+set(GRANITE_VULKAN_FOSSILIZE OFF CACHE STRING "Vulkan Fossilize" FORCE)
+set(GRANITE_VULKAN_MT OFF CACHE STRING "Vulkan MT" FORCE)
+set(GRANITE_VULKAN_FILESYSTEM OFF CACHE STRING "Vulkan filesystem" FORCE)
+add_subdirectory(external/granite EXCLUDE_FROM_ALL)
+target_include_directories(granite PUBLIC external)
 
 # Vulkan
 find_package(Vulkan REQUIRED)
@@ -76,7 +80,7 @@ target_include_directories(RadeonRaysBVH PUBLIC
 )
 target_link_libraries(RadeonRaysBVH GSL)
 
-# Granite already includes stb
+# Granite already includes stb.
 # # stb
 # add_library(stb INTERFACE)
 # target_include_directories(stb SYSTEM INTERFACE
@@ -95,7 +99,7 @@ target_include_directories(glm SYSTEM INTERFACE
   ${PROJECT_SOURCE_DIR}/external/glm
 )
 
-# Granite already includes glfw
+# Granite already includes glfw.
 # # glfw
 # option(GLFW_BUILD_EXAMPLES "" OFF)
 # option(GLFW_BUILD_TESTS "" OFF)
@@ -169,5 +173,12 @@ target_include_directories(GpuPathTracer PRIVATE
   ${PROJECT_BINARY_DIR}/include
 )
 target_link_libraries(GpuPathTracer
-  RadeonRaysBVH stb tinyobjloader windowlib glm spirv_reflect GSL granite
+  granite
+  RadeonRaysBVH
+  spirv_reflect
+  tinyobjloader
+  windowlib
+  glm
+  stb
+  GSL
 )
