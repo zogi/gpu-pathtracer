@@ -33,7 +33,7 @@ macro(add_spirv_shader GLSL_SOURCE_FILE)
     MAIN_DEPENDENCY ${GLSL_SOURCE_FILE}
     OUTPUT ${SPIRV_SHADER_OUTPUT}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
-    COMMAND ${GLSLANG} ${GLSLANG_FLAGS} -V --target-env vulkan1.0 -o ${SPIRV_SHADER_OUTPUT} ${GLSL_SOURCE_FILE_ABS}
+    COMMAND ${GLSLANG} ${GLSLANG_FLAGS} -V --target-env vulkan1.1 -o ${SPIRV_SHADER_OUTPUT} ${GLSL_SOURCE_FILE_ABS}
     DEPENDS ${GLSL_SOURCE_FILE}
   )
 endmacro(add_spirv_shader)
