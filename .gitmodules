@@ -22,9 +22,9 @@
 [submodule "external/GSL"]
 	path = external/GSL
 	url = https://github.com/microsoft/GSL
-[submodule "external/granite"]
-	path = external/granite
-	url = https://github.com/Themaister/Granite
 [submodule "external/SPIRV-Reflect"]
 	path = external/SPIRV-Reflect
 	url = https://github.com/chaoticbob/SPIRV-Reflect
+[submodule "external/granite"]
+	path = external/granite
+	url = https://github.com/zogi/Granite
