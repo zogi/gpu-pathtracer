@@ -3,5 +3,6 @@ cc_binary(
     srcs = ["main_test.cpp"],
     deps = [
         "@tinyobjloader//:tinyobjloader",
+        "@volk//:volk",
     ],
 )
