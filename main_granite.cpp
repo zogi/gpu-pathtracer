@@ -1,7 +1,8 @@
-#include "application.hpp"
+#include <cstring>
+
 #include "os_filesystem.hpp"
-#include "render_graph.hpp"
-#include <string.h>
+#include <granite/application/application.hpp>
+#include <granite/renderer/render_graph.hpp>
 
 using namespace Granite;
 using namespace Vulkan;
