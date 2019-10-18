@@ -1,0 +1,7 @@
+cc_library(
+    name = "volk",
+    srcs = ["volk.c"],
+    hdrs = ["volk.h"],
+    visibility = ["//visibility:public"],
+    deps = ["@vulkan_sdk//:vulkan"],
+)

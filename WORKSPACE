@@ -11,3 +11,10 @@ new_git_repository(
     tag = "v1.0.7",
     build_file = "//build_rules/external:BUILD.tinyobjloader",
 )
+
+new_git_repository(
+    name = "volk",
+    remote = "https://github.com/zeux/volk",
+    commit = "453c4de373c57f752d0c778b314a000fce09170e",
+    build_file = "//build_rules/external:BUILD.volk",
+)
