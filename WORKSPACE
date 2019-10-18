@@ -6,6 +6,13 @@ vulkan_sdk(
 )
 
 new_git_repository(
+    name = "stb",
+    remote = "https://github.com/nothings/stb",
+    commit = "052dce117ed989848a950308bd99eef55525dfb1",
+    build_file = "//build_rules/external:BUILD.stb",
+)
+
+new_git_repository(
     name = "tinyobjloader",
     remote = "https://github.com/syoyo/tinyobjloader",
     tag = "v1.0.7",
