@@ -171,6 +171,8 @@ add_executable(GpuPathTracer WIN32
 target_compile_definitions(GpuPathTracer PRIVATE
   # For running the granite RenderGraph sandbox.
   ASSET_DIRECTORY="${PROJECT_SOURCE_DIR}/external/granite/tests/assets"
+  # Enable console on Windows.
+  ENABLE_WINDOWS_CONSOLE
 )
 target_include_directories(GpuPathTracer PRIVATE
   ${PROJECT_BINARY_DIR}/include

@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cstring>
 
 #include "os_filesystem.hpp"
@@ -126,6 +127,15 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 namespace Granite {
 Application *application_create(int, char **)
 {
+#if defined(_WIN32) && defined(ENABLE_WINDOWS_CONSOLE)
+  if (AllocConsole()) {
+    FILE *pCout;
+    freopen_s(&pCout, "CONOUT$", "w", stdout);
+    FILE *pCerr;
+    freopen_s(&pCerr, "CONOUT$", "w", stderr);
+  }
+#endif
+
   application_dummy();
 
 #ifdef ASSET_DIRECTORY
