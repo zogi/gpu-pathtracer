@@ -2,7 +2,7 @@ cc_library(
     name = "tinyobjloader",
     srcs = ["tiny_obj_loader.cc"],
     hdrs = ["tiny_obj_loader.h"],
-    includes = ['.'],
-    include_prefix = 'tiny_obj_loader',
+    include_prefix = "tiny_obj_loader",
+    includes = ["."],
     visibility = ["//visibility:public"],
 )
