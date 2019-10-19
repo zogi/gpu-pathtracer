@@ -6,6 +6,13 @@ vulkan_sdk(
 )
 
 new_git_repository(
+    name = "spirv_cross",
+    build_file = "//build_rules/external:spirv_cross.BUILD",
+    remote = "https://github.com/KhronosGroup/SPIRV-Cross",
+    tag = "2019-09-06",
+)
+
+new_git_repository(
     name = "stb",
     build_file = "//build_rules/external:stb.BUILD",
     commit = "052dce117ed989848a950308bd99eef55525dfb1",
