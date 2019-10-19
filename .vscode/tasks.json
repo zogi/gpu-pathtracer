@@ -1,0 +1,20 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build main (Debug)",
+            "type": "shell",
+            "command": "bazel build //src:main -c dbg",
+            "windows": {
+                "command": "bazel build //src:main --experimental_enable_runfiles -c dbg"
+            },
+            "osx": {
+                "command": "bazel build //src:main -c dbg --spawn_strategy=standalone",
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+        }
+    ]
+}
