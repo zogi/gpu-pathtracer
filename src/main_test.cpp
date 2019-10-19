@@ -1,7 +1,8 @@
 #include <cstdio>
 
-#include <volk/volk.h>
+#include <granite/vulkan/context.hpp>
 
 int main() {
+  //
   printf("hello world!\n");
 }

@@ -11,10 +11,10 @@ def _impl(ctx):
 
     elif ctx.os.name.startswith("linux"):
         ctx.download_and_extract(
-          url = "https://sdk.lunarg.com/sdk/download/1.1.82.1/linux/vulkansdk-linux-x86_64-1.1.82.1.tar.gz?u=",
-          output = "vulkan_sdk",
-          type = "tar.gz",
-          sha256 = "9f6ff7e86aef4e4d6d95d8fab23f7734e0c02c2febd0113dc29b8e78cd48743b",
+            url = "https://sdk.lunarg.com/sdk/download/1.1.82.1/linux/vulkansdk-linux-x86_64-1.1.82.1.tar.gz?u=",
+            output = "vulkan_sdk",
+            type = "tar.gz",
+            sha256 = "9f6ff7e86aef4e4d6d95d8fab23f7734e0c02c2febd0113dc29b8e78cd48743b",
         )
         lib = "lib/libvulkan.so.1"
         root = "vulkan_sdk/1.1.82.1/x86_64"
@@ -25,7 +25,7 @@ def _impl(ctx):
 
     ctx.symlink(glslangValidator, "glslangValidator")
 
-    ctx.file("WORKSPACE", content="")
+    ctx.file("WORKSPACE", content = "")
     content_fmt = """
 cc_library(
     name = "vulkan",
@@ -36,8 +36,8 @@ cc_library(
 )
 exports_files(["glslangValidator"])
 """
-    content = content_fmt.format(root=root, lib=lib)
-    ctx.file("BUILD.bazel", content=content)
+    content = content_fmt.format(root = root, lib = lib)
+    ctx.file("BUILD.bazel", content = content)
 
 vulkan_sdk = repository_rule(
     local = False,

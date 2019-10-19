@@ -6,6 +6,20 @@ vulkan_sdk(
 )
 
 new_git_repository(
+    name = "vulkan_headers",
+    build_file = "//build_rules/external:vulkan_headers.BUILD",
+    remote = "https://github.com/KhronosGroup/Vulkan-Headers",
+    tag = "v1.1.125",
+)
+
+new_git_repository(
+    name = "granite",
+    build_file = "//build_rules/external:granite.BUILD",
+    commit = "a67049c459e19adfb79920d3402e0ed52451ef6a",
+    remote = "https://github.com/zogi/Granite",
+)
+
+new_git_repository(
     name = "spirv_cross",
     build_file = "//build_rules/external:spirv_cross.BUILD",
     remote = "https://github.com/KhronosGroup/SPIRV-Cross",

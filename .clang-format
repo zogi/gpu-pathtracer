@@ -10,7 +10,7 @@ AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: true
 BinPackParameters: false
 BreakBeforeBinaryOperators: false
-BreakBeforeBraces: WebKit
+BreakBeforeBraces: Attach
 BreakBeforeTernaryOperators: false
 BreakConstructorInitializers: BeforeComma
 ColumnLimit: 100
