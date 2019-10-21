@@ -1,4 +1,4 @@
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
 load("//build_rules/vulkan_sdk:repository_rule.bzl", "vulkan_sdk")
 
 vulkan_sdk(
@@ -19,11 +19,19 @@ new_git_repository(
     remote = "https://github.com/zogi/Granite",
 )
 
-new_git_repository(
+local_repository(
     name = "spirv_cross",
-    build_file = "//build_rules/external:spirv_cross.BUILD",
-    remote = "https://github.com/KhronosGroup/SPIRV-Cross",
-    tag = "2019-09-06",
+    path = "external/spirv_cross",
+)
+
+local_repository(
+    name = "spirv_headers",
+    path = "external/spirv_headers",
+)
+
+local_repository(
+    name = "spirv_tools",
+    path = "external/spirv_tools",
 )
 
 new_git_repository(
