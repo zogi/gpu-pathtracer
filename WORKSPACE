@@ -15,13 +15,37 @@ new_git_repository(
 new_git_repository(
     name = "granite",
     build_file = "//build_rules/external:granite.BUILD",
-    commit = "a67049c459e19adfb79920d3402e0ed52451ef6a",
+    #commit = "a67049c459e19adfb79920d3402e0ed52451ef6a",
+    commit = "36ce216063cf52d22f93636c3aadf3a87d0c33d4",
     remote = "https://github.com/zogi/Granite",
 )
 
-local_repository(
+new_git_repository(
+    name = "meshoptimizer",
+    build_file = "//build_rules/external:meshoptimizer.BUILD",
+    commit = "bdc3006532dd29b03d83dc819e5fa7683815b88e",
+    remote = "https://github.com/zeux/meshoptimizer",
+)
+
+new_git_repository(
+    name = "rapidjson",
+    build_file = "//build_rules/external:rapidjson.BUILD",
+    commit = "6a6bed2759d42891f9e29a37b21315d3192890ed",
+    remote = "https://github.com/Tencent/rapidjson",
+)
+
+new_git_repository(
+    name = "shaderc",
+    build_file = "//build_rules/external:shaderc.BUILD",
+    commit = "621605ce2644d55ab74cb27a8afef97dc40f1b0f",
+    remote = "https://github.com/google/shaderc",
+)
+
+new_git_repository(
     name = "spirv_cross",
-    path = "external/spirv_cross",
+    build_file = "//build_rules/external:spirv_cross.BUILD",
+    remote = "https://github.com/KhronosGroup/SPIRV-Cross",
+    tag = "2019-09-06",
 )
 
 local_repository(
