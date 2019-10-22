@@ -17,7 +17,6 @@ cc_library(
         "spirv_cross_parsed_ir.hpp",
         "spirv_parser.hpp",
     ],
-    include_prefix = "spirv_cross",
     includes = ["."],
     visibility = ["//visibility:public"],
 )

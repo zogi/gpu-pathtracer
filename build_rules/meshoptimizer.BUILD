@@ -19,11 +19,9 @@ cc_library(
     hdrs = [
         "src/meshoptimizer.h",
     ],
-    include_prefix = "meshoptimizer",
     includes = [
         ".",
         "src",
     ],
-    strip_include_prefix = "src",
     visibility = ["//visibility:public"],
 )

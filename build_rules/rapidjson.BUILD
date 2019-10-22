@@ -38,10 +38,8 @@ cc_library(
         "include/rapidjson/stringbuffer.h",
         "include/rapidjson/writer.h",
     ],
-    include_prefix = "rapidjson",
     includes = [
         "include",
     ],
-    strip_include_prefix = "include",
     visibility = ["//visibility:public"],
 )

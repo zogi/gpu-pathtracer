@@ -1,6 +1,9 @@
 [submodule "third-party/granite"]
 	path = third-party/granite
 	url = https://bitbucket.org/aratvic/granite
-[submodule "radeonrays_sdk_fork"]
-	path = radeonrays_sdk_fork
-	url = https://bitbucket.org/aratvic/radeonrays_sdk_fork
+[submodule "third-party/Vulkan-Headers"]
+	path = third-party/Vulkan-Headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers
+[submodule "third-party/tinyobjloader"]
+	path = third-party/tinyobjloader
+	url = https://github.com/syoyo/tinyobjloader

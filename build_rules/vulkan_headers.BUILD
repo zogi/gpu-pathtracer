@@ -21,7 +21,6 @@ cc_library(
         "include/vulkan/vulkan_xlib.h",
         "include/vulkan/vulkan_xlib_xrandr.h",
     ],
-    include_prefix = "vulkan",
     includes = ["include"],
     visibility = ["//visibility:public"],
 )

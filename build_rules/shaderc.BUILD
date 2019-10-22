@@ -8,7 +8,6 @@ cc_library(
         "include/shaderc/shaderc.hpp",
         "src/shaderc_private.h",
     ],
-    include_prefix = "shaderc",
     includes = [
         "include",
     ],
