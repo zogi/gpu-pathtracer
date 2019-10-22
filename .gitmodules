@@ -1,36 +1,6 @@
-[submodule "external/RadeonRays_SDK"]
-	path = external/RadeonRays_SDK
-	#url = https://github.com/zogi/RadeonRays_SDK.git
+[submodule "third-party/granite"]
+	path = third-party/granite
+	url = https://bitbucket.org/aratvic/granite
+[submodule "radeonrays_sdk_fork"]
+	path = radeonrays_sdk_fork
 	url = https://bitbucket.org/aratvic/radeonrays_sdk_fork
-	ignore = all
-	branch = embed-spirv
-[submodule "external/tinyobjloader"]
-	path = external/tinyobjloader
-	url = https://github.com/syoyo/tinyobjloader.git
-[submodule "external/glfw"]
-	path = external/glfw
-	url = https://github.com/glfw/glfw.git
-[submodule "external/stb"]
-	path = external/stb
-	url = https://github.com/nothings/stb.git
-[submodule "external/imgui"]
-	path = external/imgui
-	url = https://github.com/ocornut/imgui.git
-[submodule "external/glm"]
-	path = external/glm
-	url = https://github.com/g-truc/glm.git
-[submodule "external/GSL"]
-	path = external/GSL
-	url = https://github.com/microsoft/GSL
-[submodule "external/SPIRV-Reflect"]
-	path = external/SPIRV-Reflect
-	url = https://github.com/chaoticbob/SPIRV-Reflect
-[submodule "external/granite"]
-	path = external/granite
-	url = https://github.com/zogi/Granite
-[submodule "external/spirv_headers"]
-	path = external/spirv_headers
-	url = https://github.com/KhronosGroup/SPIRV-Headers
-[submodule "external/spirv_tools"]
-	path = external/spirv_tools
-	url = https://github.com/KhronosGroup/SPIRV-Tools

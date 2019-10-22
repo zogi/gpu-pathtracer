@@ -13,14 +13,6 @@ new_git_repository(
 )
 
 new_git_repository(
-    name = "granite",
-    build_file = "//build_rules/external:granite.BUILD",
-    #commit = "a67049c459e19adfb79920d3402e0ed52451ef6a",
-    commit = "36ce216063cf52d22f93636c3aadf3a87d0c33d4",
-    remote = "https://github.com/zogi/Granite",
-)
-
-new_git_repository(
     name = "meshoptimizer",
     build_file = "//build_rules/external:meshoptimizer.BUILD",
     commit = "bdc3006532dd29b03d83dc819e5fa7683815b88e",
@@ -50,12 +42,12 @@ new_git_repository(
 
 local_repository(
     name = "spirv_headers",
-    path = "external/spirv_headers",
+    path = "third-party/spirv_headers",
 )
 
 local_repository(
     name = "spirv_tools",
-    path = "external/spirv_tools",
+    path = "third-party/spirv_tools",
 )
 
 new_git_repository(
