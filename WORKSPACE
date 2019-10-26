@@ -1,8 +1,4 @@
-load("//build_rules/vulkan_sdk:repository_rule.bzl", "vulkan_sdk")
-
-vulkan_sdk(
-    name = "vulkan_sdk",
-)
+workspace(name = "gpu_path_tracer")
 
 new_local_repository(
     name = "vulkan_headers",
