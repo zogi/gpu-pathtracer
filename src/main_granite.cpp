@@ -4,20 +4,19 @@
 #include "os_filesystem.hpp"
 #include <granite/application/application.hpp>
 #include <granite/renderer/render_graph.hpp>
+#include <granite/vulkan/command_buffer.hpp>
 
 using namespace Granite;
 using namespace Vulkan;
 
 struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandler {
-  RenderGraphSandboxApplication()
-  {
+  RenderGraphSandboxApplication() {
     EVENT_MANAGER_REGISTER_LATCH(
       RenderGraphSandboxApplication, on_swapchain_created, on_swapchain_destroyed,
       SwapchainParameterEvent);
   }
 
-  void on_swapchain_created(const SwapchainParameterEvent &e)
-  {
+  void on_swapchain_created(const SwapchainParameterEvent &e) {
     graph.reset();
     graph.set_device(&e.get_device());
 
@@ -113,8 +112,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 
   void on_swapchain_destroyed(const SwapchainParameterEvent &) {}
 
-  void render_frame(double, double)
-  {
+  void render_frame(double, double) {
     auto &wsi = get_wsi();
     auto &device = wsi.get_device();
     graph.setup_attachments(device, &device.get_swapchain_view());
@@ -125,8 +123,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 };
 
 namespace Granite {
-Application *application_create(int, char **)
-{
+Application *application_create(int, char **) {
 #if defined(_WIN32) && defined(ENABLE_WINDOWS_CONSOLE)
   if (AllocConsole()) {
     FILE *pCout;
