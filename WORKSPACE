@@ -16,6 +16,11 @@ local_repository(
     path = "third-party/granite/third_party/spirv-tools",
 )
 
+local_repository(
+    name = "glslang",
+    path = "third-party/granite/third_party/glslang",
+)
+
 new_local_repository(
     name = "stb",
     build_file = "//build_rules:stb.BUILD",
