@@ -1,10 +1,10 @@
 cc_library(
     name = "granite",
     includes = [
-        "third-party",
+        "third_party",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//third-party/granite",
+        "//third_party/granite",
     ],
 )

@@ -141,11 +141,11 @@ Application *application_create(int argc, char **argv) {
   Global::filesystem()->register_protocol(
     "cache", std::unique_ptr<FilesystemBackend>(new OSFilesystem(CACHE_DIRECTORY)));
 
-#define BUILTIN_DIRECTORY "../../../../../third-party/granite/assets"
+#define BUILTIN_DIRECTORY "../../../../../third_party/granite/assets"
   Global::filesystem()->register_protocol(
     "builtin", std::unique_ptr<FilesystemBackend>(new OSFilesystem(BUILTIN_DIRECTORY)));
 
-#define ASSET_DIRECTORY "../../../../../third-party/granite/tests/assets"
+#define ASSET_DIRECTORY "../../../../../third_party/granite/tests/assets"
 #ifdef ASSET_DIRECTORY
   const char *asset_dir = getenv("ASSET_DIRECTORY");
   if (!asset_dir)

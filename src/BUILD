@@ -3,7 +3,7 @@ cc_binary(
     srcs = ["main_granite.cpp"],
     deps = [
         "//:granite",
-        "//third-party/granite:granite_glfw",
+        "//third_party/granite:granite_glfw",
         "@tinyobjloader",
         "@volk",
     ],

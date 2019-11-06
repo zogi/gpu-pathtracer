@@ -1,9 +1,9 @@
-[submodule "third-party/granite"]
-	path = third-party/granite
+[submodule "third_party/granite"]
+	path = third_party/granite
 	url = https://bitbucket.org/aratvic/granite
-[submodule "third-party/Vulkan-Headers"]
-	path = third-party/Vulkan-Headers
+[submodule "third_party/Vulkan-Headers"]
+	path = third_party/Vulkan-Headers
 	url = https://github.com/KhronosGroup/Vulkan-Headers
-[submodule "third-party/tinyobjloader"]
-	path = third-party/tinyobjloader
+[submodule "third_party/tinyobjloader"]
+	path = third_party/tinyobjloader
 	url = https://github.com/syoyo/tinyobjloader
