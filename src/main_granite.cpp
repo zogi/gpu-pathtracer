@@ -123,7 +123,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 };
 
 namespace Granite {
-Application *application_create(int, char **) {
+Application *application_create(int argc, char **argv) {
 #if defined(_WIN32) && defined(ENABLE_WINDOWS_CONSOLE)
   if (AllocConsole()) {
     FILE *pCout;
@@ -135,6 +135,17 @@ Application *application_create(int, char **) {
 
   application_dummy();
 
+  // Register filesystem protocols.
+
+#define CACHE_DIRECTORY "cache"
+  Global::filesystem()->register_protocol(
+    "cache", std::unique_ptr<FilesystemBackend>(new OSFilesystem(CACHE_DIRECTORY)));
+
+#define BUILTIN_DIRECTORY "../../../../../third-party/granite/assets"
+  Global::filesystem()->register_protocol(
+    "builtin", std::unique_ptr<FilesystemBackend>(new OSFilesystem(BUILTIN_DIRECTORY)));
+
+#define ASSET_DIRECTORY "../../../../../third-party/granite/tests/assets"
 #ifdef ASSET_DIRECTORY
   const char *asset_dir = getenv("ASSET_DIRECTORY");
   if (!asset_dir)
