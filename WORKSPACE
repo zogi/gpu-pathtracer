@@ -22,6 +22,12 @@ local_repository(
 )
 
 new_local_repository(
+    name = "gsl",
+    build_file = "//build_rules:gsl.BUILD",
+    path = "third_party/gsl",
+)
+
+new_local_repository(
     name = "stb",
     build_file = "//build_rules:stb.BUILD",
     path = "third_party/granite/third_party/stb",
