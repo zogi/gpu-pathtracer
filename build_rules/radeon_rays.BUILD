@@ -1,0 +1,42 @@
+cc_library(
+    name = "radeon_rays_base",
+    srcs = [
+        "src/accelerator/bvh.cpp",
+        "src/accelerator/split_bvh.cpp",
+        "src/api/radeon_rays_impl.cpp",
+        "src/primitive/mesh.cpp",
+        "src/util/options.cpp",
+        "src/world/world.cpp",
+    ],
+    hdrs = [
+        "include/math/bbox.h",
+        "include/math/float2.h",
+        "include/math/float3.h",
+        "include/math/int2.h",
+        "include/math/int3.h",
+        "include/math/mathutils.h",
+        "include/math/matrix.h",
+        "include/math/quaternion.h",
+        "include/math/ray.h",
+        "include/radeon_rays.h",
+        "src/accelerator/bvh.h",
+        "src/accelerator/split_bvh.h",
+        "src/except/except.h",
+        "src/primitive/instance.h",
+        "src/primitive/mesh.h",
+        "src/primitive/shapeimpl.h",
+        "src/util/options.h",
+        "src/world/world.h",
+    ],
+    defines = [
+        "RR_STATIC_LIBRARY=1",
+    ],
+    includes = [
+        "include",
+        "src",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@gsl",
+    ],
+)

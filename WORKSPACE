@@ -34,6 +34,12 @@ new_local_repository(
 )
 
 new_local_repository(
+    name = "radeon_rays",
+    build_file = "//build_rules:radeon_rays.BUILD",
+    path = "third_party/RadeonRays_SDK/RadeonRays",
+)
+
+new_local_repository(
     name = "tinyobjloader",
     build_file = "//build_rules:tinyobjloader.BUILD",
     path = "third_party/tinyobjloader",

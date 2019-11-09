@@ -10,3 +10,6 @@
 [submodule "third_party/gsl"]
 	path = third_party/gsl
 	url = https://github.com/microsoft/GSL
+[submodule "third_party/RadeonRays_SDK"]
+	path = third_party/RadeonRays_SDK
+	url = https://bitbucket.org/aratvic/radeonrays_sdk_fork
