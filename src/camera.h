@@ -1,47 +1,64 @@
 #pragma once
 
-#include "common.h"
+#include <array>
+
+#include <granite/application/application_wsi_events.hpp>
+#include <granite/application/input/input.hpp>
+#include <granite/event/event.hpp>
+#include <granite/math/muglm/muglm.hpp>
+#include <granite/math/muglm/muglm_impl.hpp>
 
 struct Camera {
-  glm::quat orientation;
-  glm::vec3 eye_pos;
+  muglm::quat orientation;
+  muglm::vec3 eye_pos;
 
-  glm::vec3 pivot = {};
+  muglm::vec3 pivot = {};
 
-  glm::vec3 getForwardVector() const { return glm::rotate(orientation, glm::vec3(0, 0, -1)); }
-  glm::vec3 getUpVector() const { return glm::rotate(orientation, glm::vec3(0, 1, 0)); }
-  glm::vec3 getRightVector() const { return glm::rotate(orientation, glm::vec3(1, 0, 0)); }
+  muglm::ivec2 viewport_size = {};
 
-  float getPivotDistance() const { return glm::distance(eye_pos, pivot); }
+  muglm::vec3 getForwardVector() const { return orientation * muglm::vec3(0, 0, -1); }
+  muglm::vec3 getUpVector() const { return orientation * muglm::vec3(0, 1, 0); }
+  muglm::vec3 getRightVector() const { return orientation * muglm::vec3(1, 0, 0); }
+
+  float getPivotDistance() const { return muglm::distance(eye_pos, pivot); }
 };
 
 // Modified version of cinder's CameraController class (https://github.com/cinder/Cinder).
 
-class CameraController {
+class CameraController : public Granite::EventHandler {
  public:
-  CameraController(GLFWwindow *window = nullptr);
-  void setWindow(GLFWwindow *window) { m_window = window; }
+  CameraController() {
+    m_motion_key_state.fill(false);
+    EVENT_MANAGER_REGISTER(CameraController, on_key_pressed, Granite::KeyboardEvent);
+    EVENT_MANAGER_REGISTER(CameraController, on_mouse_move, Granite::MouseMoveEvent);
+    EVENT_MANAGER_REGISTER(CameraController, on_mouse_button, Granite::MouseButtonEvent);
+
+    EVENT_MANAGER_REGISTER_LATCH(
+      CameraController, on_swapchain_created, on_swapchain_destroyed, Vulkan::SwapchainParameterEvent);
+  }
+
   void setCamera(Camera *camera_) { m_camera = camera_; }
   void setEnabled(bool enable) { m_enabled = enable; }
 
-  void tick(double time_delta); // Called once each frame.
+  void tick(float time_delta); // Called once each frame.
 
-  void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
-  void cursorPositionCallback(GLFWwindow *window, double xpos, double ypos);
-  void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods);
-  void scrollCallback(GLFWwindow *window, double xoffset, double yoffset);
+  bool on_key_pressed(const Granite::KeyboardEvent &e);
+  bool on_mouse_move(const Granite::MouseMoveEvent &e);
+  bool on_mouse_button(const Granite::MouseButtonEvent &e);
+  // TODO: scroll callback
+  // void scrollCallback(GLFWwindow *window, double xoffset, double yoffset);
+
+  void on_swapchain_created(const Vulkan::SwapchainParameterEvent &e);
+  void on_swapchain_destroyed(const Vulkan::SwapchainParameterEvent &) {}
 
  private:
   enum { ACTION_NONE, ACTION_ZOOM, ACTION_PAN, ACTION_TUMBLE };
 
-  glm::ivec2 getWindowSize() const;
+  Camera *m_camera = nullptr;
+  bool m_enabled = false;
 
-  GLFWwindow *m_window;
-  Camera *m_camera;
-  bool m_enabled;
-
-  glm::vec2 m_initial_mouse_pos;
-  Camera m_initial_cam;
-  int m_last_action;
+  muglm::vec2 m_initial_mouse_pos = {};
+  Camera m_initial_cam = {};
+  int m_last_action = ACTION_NONE;
   std::array<bool, 6> m_motion_key_state;
 };

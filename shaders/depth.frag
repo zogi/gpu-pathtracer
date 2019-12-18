@@ -17,7 +17,6 @@ layout(std140, binding = 4, row_major) uniform ViewDataBlock
 	ViewData view_data;
 };
 
-
 struct DebugVars {
   float debug_var_cam_offset;
   float debug_var_scale;

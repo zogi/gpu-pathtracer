@@ -1,10 +1,12 @@
 cc_binary(
     name = "main",
-    srcs = ["main_granite.cpp"],
+    srcs = [
+        "main_granite.cpp"
+    ],
     deps = [
         ":bvh",
+        # ":camera",
         "//:granite",
-        "//third_party/granite:granite_glfw",
         "@tinyobjloader",
         "@volk",
     ],
@@ -26,5 +28,18 @@ cc_library(
     ],
     deps = [
         "@radeon_rays//:radeon_rays_base",
+    ],
+)
+
+cc_library(
+    name = "camera",
+    srcs = [
+        "camera.cpp",
+    ],
+    hdrs = [
+        "camera.h",
+    ],
+    deps = [
+        "//:granite",
     ],
 )
