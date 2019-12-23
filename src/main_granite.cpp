@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <muglm/muglm.hpp>
@@ -15,7 +14,9 @@
 
 #include <bvh/bvh_builder.h>
 
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include "os_filesystem.hpp"
 #include <granite/application/application.hpp>
 #include <granite/renderer/camera.hpp>
@@ -154,7 +155,7 @@ void delete_device_data(DeviceData &device_data, Device &device) {
 }
 
 struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandler {
-  RenderGraphSandboxApplication(std::string_view scene_path)
+  RenderGraphSandboxApplication(const std::string& scene_path)
     : renderer_(RendererType::GeneralForward) {
     EVENT_MANAGER_REGISTER_LATCH(
       RenderGraphSandboxApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
