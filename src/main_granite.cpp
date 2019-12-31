@@ -124,16 +124,20 @@ std::vector<bvh::bbox> build_mesh_osbvh(const SceneFormats::Mesh &mesh) {
   const uint32_t triangle_count = index_count / 3;
 
   std::vector<bvh::bbox> leafs;
-  leafs.reserve(triangle_count);
-  using float3 = RadeonRays::float3;
-  for (uint32_t i = 0; i < index_count;) {
-    bvh::bbox box;
-    for (int j = 0; j < 3; ++j) {
-      float3 p;
-      std::memcpy(&p, (float3 *)(&mesh.positions[get_index(i++)]), sizeof(float3));
-      box.grow(p);
+  {
+    leafs.reserve(triangle_count);
+    using float3 = RadeonRays::float3;
+    float *positions = (float *)(&mesh.positions[0]);
+    for (uint32_t i = 0; i < index_count; i += 3) {
+      bvh::bbox box;
+      for (int j = 0; j < 3; ++j) {
+        const auto index = get_index(i + j);
+        float3 p;
+        std::memcpy(&p, (float3 *)(&positions[index]), sizeof(float3));
+        box.grow(p);
+      }
+      leafs.push_back(box);
     }
-    leafs.push_back(box);
   }
 
   bvh::BvhOptions options;
@@ -221,24 +225,28 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
     }
 
     // Build BVH.
-#if 0
     {
       auto &scene = scene_loader_.get_scene();
 
       // Now just build a single object-level BVH for the first mesh.
       // TODO: build BVHs for all meshes and a top-level BVH.
       SceneFormats::Mesh const *test_mesh = nullptr;
-      auto &objects = scene.get_entity_pool().get_component_entities<ImportedMesh>();
+      auto &objects = scene.get_entity_pool().get_component_group<RenderableComponent>();
       for (auto &object : objects) {
-        ImportedMesh *renderable = Granite::get_component<ImportedMesh>(object);
+        RenderableComponent *renderable = Granite::get_component<RenderableComponent>(object);
         // HACK: only use the first mesh for now.
-        test_mesh = &renderable->get_mesh();
+        AbstractRenderable *abstract_renderable = renderable->renderable.get();
+        ImportedMesh *imported_mesh = dynamic_cast<ImportedMesh *>(abstract_renderable);
+        if (imported_mesh == nullptr) {
+          continue;
+        }
+        test_mesh = &imported_mesh->get_mesh();
         break;
       }
       assert(test_mesh != nullptr);
+
       bvh_ = build_mesh_osbvh(*test_mesh);
     }
-#endif
 
     // Set up real-time rendering context.
     lighting_.directional.color = vec3(1, 1, 1);
