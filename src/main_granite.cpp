@@ -96,13 +96,55 @@ struct GlobalData {
   DeviceData device_data;
 };
 
-void init_device_data(Device &device, DeviceData &device_data, const SceneData &scene_data) {
+std::vector<bvh::bbox> build_mesh_osbvh(const SceneFormats::Mesh &mesh) {
+  int index_stride = 0;
+  if (mesh.index_type == VK_INDEX_TYPE_UINT16) {
+    index_stride = 2;
+  } else if (mesh.index_type == VK_INDEX_TYPE_UINT32) {
+    index_stride = 4;
+  }
+  assert(index_stride != 0);
+  const auto get_index = [&mesh, index_stride](int i) -> uint32_t {
+    auto p = &mesh.indices[i * index_stride];
+    if (index_stride == 2) {
+      uint16_t res;
+      std::memcpy(&res, (uint16_t *)p, 2);
+      return uint32_t(res);
+    } else if (index_stride == 4) {
+      uint32_t res;
+      std::memcpy(&res, (uint32_t *)p, 4);
+      return res;
+    }
+    assert(false);
+    return uint32_t(0);
+  };
+
+  const uint32_t index_count = mesh.indices.size() / index_stride;
+  assert(mesh.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+  const uint32_t triangle_count = index_count / 3;
+
+  std::vector<bvh::bbox> leafs;
+  leafs.reserve(triangle_count);
+  using float3 = RadeonRays::float3;
+  for (uint32_t i = 0; i < index_count;) {
+    bvh::bbox box;
+    for (int j = 0; j < 3; ++j) {
+      float3 p;
+      std::memcpy(&p, (float3 *)(&mesh.positions[get_index(i++)]), sizeof(float3));
+      box.grow(p);
+    }
+    leafs.push_back(box);
+  }
+
+  bvh::BvhOptions options;
+  options.SetValue("bvh.builder", "sah");
+  return bvh::build_osbvh(leafs, options);
+}
+
+void init_device_data(Device &device, DeviceData &device_data, Granite::Scene &scene) {
   // Build BVH.
   {
-    const RadeonRays::Shape *shape = scene_data.test_shape.get();
-
-    assert(shape != nullptr);
-
+#if 0
     RadeonRays::World world;
     world.AttachShape(shape);
     world.OnCommit();
@@ -135,6 +177,7 @@ void init_device_data(Device &device, DeviceData &device_data, const SceneData &
     device_data.bvh_nodes_buffer = std::move(bvh_nodes_buffer);
     device_data.bvh_vtx_buffer = std::move(bvh_vtx_buffer);
     device_data.bvh_faces_buffer = std::move(bvh_faces_buffer);
+#endif
   }
 
   // Common buffers
@@ -169,6 +212,26 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
     // Load scene.
     scene_loader_.load_scene(scene_path);
 
+    // Build BVH.
+#if 0
+    {
+      auto &scene = scene_loader_.get_scene();
+
+      // Now just build a single object-level BVH for the first mesh.
+      // TODO: build BVHs for all meshes and a top-level BVH.
+      SceneFormats::Mesh const *test_mesh = nullptr;
+      auto &objects = scene.get_entity_pool().get_component_entities<ImportedMesh>();
+      for (auto &object : objects) {
+        ImportedMesh *renderable = Granite::get_component<ImportedMesh>(object);
+        // HACK: only use the first mesh for now.
+        test_mesh = &renderable->get_mesh();
+        break;
+      }
+      assert(test_mesh != nullptr);
+      bvh_ = build_mesh_osbvh(*test_mesh);
+    }
+#endif
+
     // Set up real-time rendering context.
     lighting_.directional.color = vec3(1, 1, 1);
     lighting_.directional.direction = normalize(vec3(0.5f, 1.2f, 0.8f));
@@ -181,7 +244,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 
   void on_device_created(const DeviceCreatedEvent &e) {
     //
-    init_device_data(e.get_device(), global_data_.device_data, global_data_.scene_data);
+    init_device_data(e.get_device(), global_data_.device_data, scene_loader_.get_scene());
   }
 
   void on_device_destroyed(const DeviceCreatedEvent &e) {
@@ -311,6 +374,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 
   RenderGraph graph_;
   GlobalData global_data_;
+  std::vector<bvh::bbox> bvh_;
 
   FPSCamera cam_;
   LightingParameters lighting_;

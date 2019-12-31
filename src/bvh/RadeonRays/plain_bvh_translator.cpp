@@ -26,11 +26,13 @@ THE SOFTWARE.
 #include "primitive/mesh.h"
 
 #include <cassert>
+#include <cstdint>
 #include <iostream>
 #include <stack>
 
 namespace {
-inline float floatBitsFromInt(int i) { return *(float *)&i; }
+inline float floatBitsFromInt(uint32_t i) { return *(float *)&i; }
+inline uint32_t intFromFloatBits(float x) { return *(uint32_t *)&x; }
 } // unnamed namespace
 
 namespace RadeonRays {
@@ -52,22 +54,28 @@ void PlainBvhTranslator::Process(Bvh &bvh)
   ProcessNode(bvh.m_root);
 
   // Set next ptr
+  // TODO: use 0xffffffff
   nodes_[rootidx].bounds.pmax.w = -1;
 
   //
   for (int i = rootidx; i < (int)nodes_.size(); ++i) {
+    // TODO: use 0xffffffff
     if (nodes_[i].bounds.pmin.w != -1.f) {
       nodes_[i + 1].bounds.pmax.w = nodes_[i].bounds.pmin.w;
+      // TODO: use intFromFloatBits
       nodes_[(int)(nodes_[i].bounds.pmin.w)].bounds.pmax.w = nodes_[i].bounds.pmax.w;
     }
   }
 
   for (int i = rootidx; i < (int)nodes_.size(); ++i) {
+    // TODO: use 0xffffffff
     if (nodes_[i].bounds.pmin.w == -1.f) {
       // nodes_[i].bounds.pmin.w = (float)extra_[i];
+      // TODO: use floatBitsFromInt
       nodes_[i].bounds.pmin.w = float(extra_[i] >> 4);
       // nodes_[i].bounds.pmin.w = floatBitsFromInt(extra_[i]);
     } else {
+      // TODO: use 0xffffffff
       nodes_[i].bounds.pmin.w = -1.f;
     }
   }
@@ -84,16 +92,21 @@ void PlainBvhTranslator::UpdateTopLevel(Bvh const &bvh)
   nodes_[root_].bounds.pmax.w = -1;
 
   for (int j = root_; j < root_ + bvh.m_nodecnt; ++j) {
+    // TODO: use 0xffffffff
     if (nodes_[j].bounds.pmin.w != -1.f) {
       nodes_[j + 1].bounds.pmax.w = nodes_[j].bounds.pmin.w;
+      // TODO: use intFromFloatBits
       nodes_[(int)(nodes_[j].bounds.pmin.w)].bounds.pmax.w = nodes_[j].bounds.pmax.w;
     }
   }
 
   for (int j = root_; j < root_ + bvh.m_nodecnt; ++j) {
+    // TODO: use 0xffffffff
     if (nodes_[j].bounds.pmin.w == -1.f) {
+      // TODO: use floatBitsFromInt
       nodes_[j].bounds.pmin.w = (float)extra_[j];
     } else {
+      // TODO: use 0xffffffff
       nodes_[j].bounds.pmin.w = -1.f;
     }
   }
@@ -128,19 +141,25 @@ void PlainBvhTranslator::Process(Bvh const **bvhs, int const *offsets, int numbv
     ProcessNode(bvhs[i]->m_root, offsets[i]);
 
     // Set next ptr
+    // TODO: use 0xffffffff
     nodes_[currentroot].bounds.pmax.w = -1;
 
     for (int j = currentroot; j < currentroot + bvhs[i]->m_nodecnt; ++j) {
+      // TODO: use 0xffffffff
       if (nodes_[j].bounds.pmin.w != -1.f) {
         nodes_[j + 1].bounds.pmax.w = nodes_[j].bounds.pmin.w;
+        // TODO: use intFromFloatBits
         nodes_[(int)(nodes_[j].bounds.pmin.w)].bounds.pmax.w = nodes_[j].bounds.pmax.w;
       }
     }
 
     for (int j = currentroot; j < currentroot + bvhs[i]->m_nodecnt; ++j) {
+      // TODO: use 0xffffffff
       if (nodes_[j].bounds.pmin.w == -1.f) {
+        // TODO: use floatBitsFromInt
         nodes_[j].bounds.pmin.w = (float)extra_[j];
       } else {
+        // TODO: use 0xffffffff
         nodes_[j].bounds.pmin.w = -1.f;
       }
     }
@@ -153,19 +172,25 @@ void PlainBvhTranslator::Process(Bvh const **bvhs, int const *offsets, int numbv
   ProcessNode(bvhs[numbvhs]->m_root);
 
   // Set next ptr
+  // TODO: use 0xffffffff
   nodes_[root_].bounds.pmax.w = -1;
 
   for (int j = root_; j < root_ + bvhs[numbvhs]->m_nodecnt; ++j) {
+    // TODO: use 0xffffffff
     if (nodes_[j].bounds.pmin.w != -1.f) {
       nodes_[j + 1].bounds.pmax.w = nodes_[j].bounds.pmin.w;
+      // TODO: use intFromFloatBits
       nodes_[(int)(nodes_[j].bounds.pmin.w)].bounds.pmax.w = nodes_[j].bounds.pmax.w;
     }
   }
 
   for (int j = root_; j < root_ + bvhs[numbvhs]->m_nodecnt; ++j) {
+    // TODO: use 0xffffffff
     if (nodes_[j].bounds.pmin.w == -1.f) {
+      // TODO: use floatBitsFromInt
       nodes_[j].bounds.pmin.w = (float)extra_[j];
     } else {
+      // TODO: use 0xffffffff
       nodes_[j].bounds.pmin.w = -1.f;
     }
   }
@@ -182,9 +207,11 @@ int PlainBvhTranslator::ProcessNode(Bvh::Node const *n)
   if (n->type == Bvh::kLeaf) {
     int startidx = n->startidx;
     extra = (startidx << 4) | (n->numprims & 0xF);
+    // TODO: use 0xffffffff
     node.bounds.pmin.w = -1.f;
   } else {
     ProcessNode(n->lc);
+    // TODO: use floatBitsFromInt
     node.bounds.pmin.w = (float)ProcessNode(n->rc);
   }
 
@@ -194,7 +221,6 @@ int PlainBvhTranslator::ProcessNode(Bvh::Node const *n)
 int PlainBvhTranslator::ProcessNode(Bvh::Node const *n, int offset)
 {
   int idx = nodecnt_;
-  // std::cout << "Index " << idx << "\n";
   Node &node = nodes_[nodecnt_];
   node.bounds = n->bounds;
   int &extra = extra_[nodecnt_++];
@@ -202,9 +228,11 @@ int PlainBvhTranslator::ProcessNode(Bvh::Node const *n, int offset)
   if (n->type == Bvh::kLeaf) {
     int startidx = n->startidx + offset;
     extra = (startidx << 4) | (n->numprims & 0xF);
+    // TODO: use 0xffffffff
     node.bounds.pmin.w = -1.f;
   } else {
     ProcessNode(n->lc, offset);
+    // TODO: use floatBitsFromInt
     node.bounds.pmin.w = (float)ProcessNode(n->rc, offset);
   }
 
