@@ -19,7 +19,9 @@
 #endif
 #include "os_filesystem.hpp"
 #include <granite/application/application.hpp>
+#include <granite/ecs/ecs.hpp>
 #include <granite/renderer/camera.hpp>
+#include <granite/renderer/mesh_util.hpp>
 #include <granite/renderer/render_context.hpp>
 #include <granite/renderer/render_graph.hpp>
 #include <granite/renderer/renderer.hpp>
@@ -155,21 +157,25 @@ void delete_device_data(DeviceData &device_data, Device &device) {
 }
 
 struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandler {
-  RenderGraphSandboxApplication(const std::string& scene_path)
+  RenderGraphSandboxApplication(const std::string &scene_path)
     : renderer_(RendererType::GeneralForward) {
+    // Set up event handlers.
     EVENT_MANAGER_REGISTER_LATCH(
       RenderGraphSandboxApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
     EVENT_MANAGER_REGISTER_LATCH(
       RenderGraphSandboxApplication, on_swapchain_created, on_swapchain_destroyed,
       SwapchainParameterEvent);
 
-    // TODO: scene
-    scene_loader.load_scene(scene_path);
+    // Load scene.
+    scene_loader_.load_scene(scene_path);
 
+    // Set up real-time rendering context.
     lighting_.directional.color = vec3(1, 1, 1);
     lighting_.directional.direction = normalize(vec3(0.5f, 1.2f, 0.8f));
     context_.set_lighting_parameters(&lighting_);
+
     cam_.set_depth_range(0.1f, 1000.0f);
+    cam_.look_at(vec3(-1.0f, 0.0f, 0.0f), vec3(1.0f, 0.0f, 0.0f));
     context_.set_camera(cam_);
   }
 
@@ -200,10 +206,19 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
     dim.format = e.get_format();
     graph_.set_backbuffer_dimensions(dim);
 
+    scene_loader_.get_scene().add_render_passes(graph_);
+
     AttachmentInfo back;
 
     auto &pass_graphics = graph_.add_pass("graphics", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
     auto &rt_back = pass_graphics.add_color_output("back", back);
+    pass_graphics.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
+      if (value) {
+        value->depth = 1.0f;
+        value->stencil = 0;
+      }
+      return true;
+    });
     pass_graphics.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
       if (value) {
         value->float32[0] = 1.0f;
@@ -215,6 +230,20 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
     });
 
     pass_graphics.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+      {
+        auto &scene = scene_loader_.get_scene();
+        context_.set_camera(cam_.get_projection(), cam_.get_view());
+        VisibilityList visible;
+        visible.clear();
+        scene.gather_visible_opaque_renderables(context_.get_visibility_frustum(), visible);
+        renderer_.set_mesh_renderer_options_from_lighting(lighting_);
+        renderer_.set_mesh_renderer_options(renderer_.get_mesh_renderer_options());
+        renderer_.begin();
+        renderer_.push_renderables(context_, visible);
+        Renderer::RendererOptionFlags opt = 0;
+        renderer_.flush(cmd, context_, opt);
+      }
+      return;
       CommandBufferUtil::setup_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "shaders://depth.frag");
       // CommandBufferUtil::setup_fullscreen_quad(
       //   cmd, "builtin://shaders/quad.vert",
@@ -235,6 +264,8 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
       CommandBufferUtil::draw_fullscreen_quad(cmd, 80);
     });
 
+    scene_loader_.get_scene().add_render_pass_dependencies(graph_, pass_graphics);
+
     graph_.set_backbuffer_source("back");
     graph_.bake();
     graph_.log();
@@ -245,9 +276,13 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
   void render_frame(double frame_time, double elapsed_time) {
     auto &wsi = get_wsi();
     auto &device = wsi.get_device();
+    auto &scene = scene_loader_.get_scene();
 
     // Per-frame updates
     // TODO: update ViewData
+    scene.update_cached_transforms();
+
+#if 0
     // Upload uniforms
     {
       ViewData view_data = {};
@@ -267,7 +302,9 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
       // GPUBufferTransfer::upload(span, view_uniforms.buffer,
       // VK_ACCESS_SHADER_READ_BIT);
     }
+#endif
 
+    scene.bind_render_graph_resources(graph_);
     graph_.setup_attachments(device, &device.get_swapchain_view());
     graph_.enqueue_render_passes(device);
   }
@@ -279,7 +316,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
   LightingParameters lighting_;
   RenderContext context_;
   Renderer renderer_;
-  SceneLoader scene_loader;
+  SceneLoader scene_loader_;
 };
 
 namespace Granite {
@@ -321,7 +358,7 @@ Application *application_create(int argc, char **argv) {
     "shaders", std::unique_ptr<FilesystemBackend>(new OSFilesystem("shaders")));
 
 
-  const std::string kFilename = "../assets/icosahedron.obj";
+  const std::string kFilename = "../assets/icosahedron.gltf";
 
   // Create the app object.
 
@@ -335,6 +372,7 @@ Application *application_create(int argc, char **argv) {
 
 
   // Load geometry.
+#if 0
   {
     LOGI("Loading geometry\n");
 
@@ -390,6 +428,7 @@ Application *application_create(int argc, char **argv) {
 
     app->global_data_.scene_data.test_shape = std::move(rr_shape);
   }
+#endif
 
   return app.release();
 }
