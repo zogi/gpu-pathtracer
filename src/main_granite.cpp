@@ -210,7 +210,15 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
       SwapchainParameterEvent);
 
     // Load scene.
-    scene_loader_.load_scene(scene_path);
+    // scene_loader_.load_scene(scene_path);
+    // HACK: use test scene
+    const std::string kTestScene = "../assets/lucy/lucy_watertight.glb";
+    scene_loader_.load_scene(kTestScene);
+    {
+      auto &transform = scene_loader_.get_scene().get_root_node()->transform;
+      transform.translation = vec3(0, -0.35, 0);
+      transform.scale = vec3(0.008f);
+    }
 
     // Build BVH.
 #if 0
@@ -238,7 +246,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
     context_.set_lighting_parameters(&lighting_);
 
     cam_.set_depth_range(0.1f, 1000.0f);
-    cam_.look_at(vec3(-1.0f, 0.0f, 0.0f), vec3(1.0f, 0.0f, 0.0f));
+    cam_.look_at(vec3(-1.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 0.0f));
     context_.set_camera(cam_);
   }
 
@@ -271,10 +279,12 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 
     scene_loader_.get_scene().add_render_passes(graph_);
 
-    AttachmentInfo back;
+    AttachmentInfo back, depth;
+    depth.format = device.get_default_depth_format();
 
     auto &pass_graphics = graph_.add_pass("graphics", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-    auto &rt_back = pass_graphics.add_color_output("back", back);
+    pass_graphics.add_color_output("back", back);
+    pass_graphics.set_depth_stencil_output("depth", depth);
     pass_graphics.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
       if (value) {
         value->depth = 1.0f;
@@ -421,14 +431,11 @@ Application *application_create(int argc, char **argv) {
   Global::filesystem()->register_protocol(
     "shaders", std::unique_ptr<FilesystemBackend>(new OSFilesystem("shaders")));
 
-
-  const std::string kFilename = "../assets/icosahedron.gltf";
-
   // Create the app object.
 
   std::unique_ptr<RenderGraphSandboxApplication> app;
   try {
-    app = std::make_unique<RenderGraphSandboxApplication>(kFilename);
+    app = std::make_unique<RenderGraphSandboxApplication>("TODO: filename");
   } catch (const std::exception &e) {
     LOGE("application_create() threw exception: %s\n", e.what());
     return nullptr;
