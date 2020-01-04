@@ -4,34 +4,35 @@
 
 #include "config-inc.h"
 #include "RadeonRays/bvh.glslh"
+#include "inc/render_parameters.h"
 
-struct ViewData {
-  mat4 view_transform;
-  vec3 eye_pos;
-  // Extent of the image at unit distance from camera center.
-  vec2 image_size_norm;
-};
+// struct ViewData {
+//   mat4 view_transform;
+//   vec3 eye_pos;
+//   // Extent of the image at unit distance from camera center.
+//   vec2 image_size_norm;
+// };
+//
+// layout(std140, binding = 4, row_major) uniform ViewDataBlock
+// {
+// 	ViewData view_data;
+// };
 
-layout(std140, binding = 4, row_major) uniform ViewDataBlock
-{
-	ViewData view_data;
-};
+// struct DebugVars {
+//   float debug_var_cam_offset;
+//   float debug_var_scale;
+//   int debug_var_int_1;
+//   float debug_var_float_1;
+//   float debug_var_float_2;
+// };
+//
+// layout(push_constant) uniform DebugVarsBlock
+// {
+// 	DebugVars debug_vars;
+// };
 
-struct DebugVars {
-  float debug_var_cam_offset;
-  float debug_var_scale;
-  int debug_var_int_1;
-  float debug_var_float_1;
-  float debug_var_float_2;
-};
-
-layout(push_constant) uniform DebugVarsBlock
-{
-	DebugVars debug_vars;
-};
-
-layout(location = 0) in vec2 texCoords;
-layout(location = 0) out vec4 outputColor;
+layout(location = 0) in highp vec2 texCoords;
+layout(location = 0) out mediump vec4 outputColor;
 
 void main() {
   //outputColor = vec4(0, 0, 1, 1);
@@ -39,7 +40,8 @@ void main() {
   //outputColor = vec4(node.pmax.xyz, 1);
   //vec4 v = Vertices[1];
   //outputColor = vec4(v.xyz, 1);
-  outputColor = vec4(texCoords, 0, 1);
+  //outputColor = vec4(texCoords, global.camera_position.z, 1);
+#if 1
 
   // Construct ray in view space.
   ray r;
@@ -51,29 +53,62 @@ void main() {
   r.o.w = 1000.0; // max distance
 
   vec2 dxy = (texCoords - 0.5);
-  dxy *= view_data.image_size_norm;
-  dxy.y = -dxy.y;
-  dxy *= debug_vars.debug_var_scale;
+
+  //dxy *= view_data.image_size_norm;
+  //dxy.y = -dxy.y;
+  dxy.x *= global.inv_projection[0][0];
+  dxy.y *= global.inv_projection[1][1];
+  //dxy.x /= global.projection[0][0];
+  //dxy.y /= global.projection[1][1];
+
+  //dxy *= debug_vars.debug_var_scale;
   r.d.xyz = vec3(dxy.xy, -1);
   r.d.w = 0; // time for motion blur
 
   // Transform to world space.
-  r.o.xyz = view_data.eye_pos;
+  //r.o.xyz = view_data.eye_pos;
+  r.o.xyz = global.camera_position;
+
   // TODO: use quaternion?
-  r.d.xyz = mat3(view_data.view_transform) * r.d.xyz;
+  //r.d.xyz = mat3(view_data.view_transform) * r.d.xyz;
+  r.d.xyz = mat3(global.inv_view) * r.d.xyz;
   r.d.xyz = normalize(r.d.xyz);
 
-  r.o.x += debug_vars.debug_var_cam_offset;
+  //r.o.x += debug_vars.debug_var_cam_offset;
 
-#if 1
+  //outputColor = vec4(r.d.xyz, 1);
+
+#if 0
   // Intersect with scene.
   Intersection isect;
   IntersectSceneClosest(r, isect);
   if (isect.shapeid == -1) {
     outputColor = vec4(0, 0, 0, 1);
   } else {
-    float x = smoothstep(isect.uvwt.w, debug_vars.debug_var_float_1, debug_vars.debug_var_float_2);
+    //float x = smoothstep(isect.uvwt.w, debug_vars.debug_var_float_1, debug_vars.debug_var_float_2);
+    float x = smoothstep(isect.uvwt.w, 0.1, 2.0);
+    //float x = isect.uvwt.w;
+    //x = 1;
     outputColor = vec4(x, x, x, 1);
+  }
+#endif
+
+#if 1
+  // Debug BVH
+  Intersection isect;
+  bool found = false;
+  for (int start = 0; start < 20; ++start) {
+    vec3 v1 = get_vertex(Indices[3*start+0]);
+    vec3 v2 = get_vertex(Indices[3*start+1]);
+    vec3 v3 = get_vertex(Indices[3*start+2]);
+    if (IntersectTriangle(r, v1, v2, v3, isect)) {
+      found = true;
+    }
+  }
+  if (found) {
+    outputColor = vec4(1, 1, 1, 1);
+  } else {
+    outputColor = vec4(0, 0, 0, 0);
   }
 #endif
 
@@ -114,5 +149,7 @@ void main() {
   } else {
     outputColor = vec4(0, 0, 0, 1);
   }
+#endif
+
 #endif
 }

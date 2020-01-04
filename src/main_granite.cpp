@@ -29,7 +29,15 @@
 #include <granite/util/util.hpp>
 #include <granite/vulkan/command_buffer.hpp>
 
+#include "../shaders/config-inc.h"
+
 //#include "camera.h"
+
+// HACK: hard-code paths
+#define ASSET_DIRECTORY "third_party/granite/tests/assets"
+#define BUILTIN_DIRECTORY "third_party/granite/assets"
+#define BUILTIN_SHADERS_DIRECTORY (BUILTIN_DIRECTORY "/shaders")
+#define CACHE_DIRECTORY "cache"
 
 using namespace Granite;
 using namespace Vulkan;
@@ -96,7 +104,13 @@ struct GlobalData {
   DeviceData device_data;
 };
 
-std::vector<bvh::bbox> build_mesh_osbvh(const SceneFormats::Mesh &mesh) {
+struct BvhData {
+  std::vector<bvh::bbox> bvh_nodes;
+  std::vector<float> bvh_vtx;
+  std::vector<int> bvh_idx;
+};
+
+void build_mesh_osbvh(const SceneFormats::Mesh &mesh, BvhData &out_bvh) {
   int index_stride = 0;
   if (mesh.index_type == VK_INDEX_TYPE_UINT16) {
     index_stride = 2;
@@ -123,18 +137,34 @@ std::vector<bvh::bbox> build_mesh_osbvh(const SceneFormats::Mesh &mesh) {
   assert(mesh.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
   const uint32_t triangle_count = index_count / 3;
 
+  auto &nodes = out_bvh.bvh_nodes;
+  nodes.clear();
+  const uint32_t vertex_count = mesh.positions.size() / mesh.position_stride;
+  auto &vtx = out_bvh.bvh_vtx;
+  vtx.clear();
+  vtx.reserve(vertex_count);
+  auto &idx = out_bvh.bvh_idx;
+  idx.clear();
+  idx.reserve(index_count);
+
   std::vector<bvh::bbox> leafs;
   {
     leafs.reserve(triangle_count);
-    using float3 = RadeonRays::float3;
-    float *positions = (float *)(&mesh.positions[0]);
+    using vec3 = float[3];
+    vec3 *positions = (vec3 *)(&mesh.positions[0]);
+    for (uint32_t i = 0; i < vertex_count; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        vtx.push_back(positions[i][j]);
+      }
+    }
     for (uint32_t i = 0; i < index_count; i += 3) {
       bvh::bbox box;
       for (int j = 0; j < 3; ++j) {
         const auto index = get_index(i + j);
-        float3 p;
-        std::memcpy(&p, (float3 *)(&positions[index]), sizeof(float3));
-        box.grow(p);
+        idx.push_back(index);
+
+        auto &p = positions[index];
+        box.grow(bvh::float3(p[0], p[1], p[2]));
       }
       leafs.push_back(box);
     }
@@ -142,11 +172,25 @@ std::vector<bvh::bbox> build_mesh_osbvh(const SceneFormats::Mesh &mesh) {
 
   bvh::BvhOptions options;
   options.SetValue("bvh.builder", "sah");
-  return bvh::build_osbvh(leafs, options);
+  nodes = bvh::build_osbvh(leafs, options);
 }
 
-void init_device_data(Device &device, DeviceData &device_data, Granite::Scene &scene) {
-  // Build BVH.
+void init_device_data(Device &device, DeviceData &device_data, BvhData &bvh) {
+  // Upload BVH nodes to GPU
+  {
+    const auto create_bvh_buffer = [&](gsl::span<const gsl::byte> data) {
+      constexpr VkBufferUsageFlagBits kDebugFlag = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+      BufferCreateInfo info = {};
+      info.size = data.size();
+      info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | kDebugFlag;
+      return device.create_buffer(info, data.data());
+    };
+
+    device_data.bvh_nodes_buffer = create_bvh_buffer(gsl::as_bytes(gsl::make_span(bvh.bvh_nodes)));
+    device_data.bvh_vtx_buffer = create_bvh_buffer(gsl::as_bytes(gsl::make_span(bvh.bvh_vtx)));
+    device_data.bvh_faces_buffer = create_bvh_buffer(gsl::as_bytes(gsl::make_span(bvh.bvh_idx)));
+  }
+
   {
 #if 0
     RadeonRays::World world;
@@ -185,15 +229,15 @@ void init_device_data(Device &device, DeviceData &device_data, Granite::Scene &s
   }
 
   // Common buffers
-  {
-    BufferCreateInfo info = {};
-    info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
-    info.size = sizeof(ViewData);
-    info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    auto view_data_buffer = device.create_buffer(info, nullptr);
+  // {
+  //   BufferCreateInfo info = {};
+  //   info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
+  //   info.size = sizeof(ViewData);
+  //   info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  //   auto view_data_buffer = device.create_buffer(info, nullptr);
 
-    device_data.view_data_buffer = std::move(view_data_buffer);
-  }
+  //   device_data.view_data_buffer = std::move(view_data_buffer);
+  // }
 }
 
 void delete_device_data(DeviceData &device_data, Device &device) {
@@ -216,36 +260,39 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
     // Load scene.
     // scene_loader_.load_scene(scene_path);
     // HACK: use test scene
-    const std::string kTestScene = "../assets/lucy/lucy_watertight.glb";
+    // const std::string kTestScene = "../assets/lucy/lucy_watertight.glb";
+    const std::string kTestScene = "../assets/icosahedron.glb";
     scene_loader_.load_scene(kTestScene);
     {
       auto &transform = scene_loader_.get_scene().get_root_node()->transform;
-      transform.translation = vec3(0, -0.35, 0);
-      transform.scale = vec3(0.008f);
+      // Lucy
+      // transform.translation = vec3(0, -0.35, 0);
+      // transform.scale = vec3(0.008f);
+
+      // Icosahedron
+      transform.scale = vec3(0.3f);
     }
 
     // Build BVH.
+    LOGI("Building BVH");
     {
       auto &scene = scene_loader_.get_scene();
 
       // Now just build a single object-level BVH for the first mesh.
       // TODO: build BVHs for all meshes and a top-level BVH.
-      SceneFormats::Mesh const *test_mesh = nullptr;
       auto &objects = scene.get_entity_pool().get_component_group<RenderableComponent>();
       for (auto &object : objects) {
         RenderableComponent *renderable = Granite::get_component<RenderableComponent>(object);
         // HACK: only use the first mesh for now.
         AbstractRenderable *abstract_renderable = renderable->renderable.get();
-        ImportedMesh *imported_mesh = dynamic_cast<ImportedMesh *>(abstract_renderable);
-        if (imported_mesh == nullptr) {
-          continue;
+        test_mesh_ = dynamic_cast<ImportedMesh *>(abstract_renderable);
+        if (test_mesh_ != nullptr) {
+          break;
         }
-        test_mesh = &imported_mesh->get_mesh();
-        break;
       }
-      assert(test_mesh != nullptr);
+      assert(test_mesh_ != nullptr);
 
-      bvh_ = build_mesh_osbvh(*test_mesh);
+      build_mesh_osbvh(test_mesh_->get_mesh(), bvh_);
     }
 
     // Set up real-time rendering context.
@@ -259,8 +306,9 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
   }
 
   void on_device_created(const DeviceCreatedEvent &e) {
-    //
-    init_device_data(e.get_device(), global_data_.device_data, scene_loader_.get_scene());
+    // Expose builtin shaders for inclusion in custom shaders.
+    e.get_device().get_shader_manager().add_include_directory(BUILTIN_SHADERS_DIRECTORY);
+    init_device_data(e.get_device(), global_data_.device_data, bvh_);
   }
 
   void on_device_destroyed(const DeviceCreatedEvent &e) {
@@ -271,7 +319,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
   void on_swapchain_created(const SwapchainParameterEvent &e) {
     auto &device = e.get_device();
 
-    // Update extent in SceneData
+    // Update swapchain extent
     global_data_.swapchain_data.window_size = { int32_t(e.get_width()), int32_t(e.get_height()) };
 
     // Rebuild render graph.
@@ -287,6 +335,18 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 
     scene_loader_.get_scene().add_render_passes(graph_);
 
+    const auto get_black_clear_color = [](unsigned, VkClearColorValue *value) -> bool {
+      if (value) {
+        value->float32[0] = 0.0f;
+        value->float32[1] = 0.0f;
+        value->float32[2] = 0.0f;
+        value->float32[3] = 1.0f;
+      }
+      return true;
+    };
+
+    // Scanline rendering pass
+
     AttachmentInfo back, depth;
     depth.format = device.get_default_depth_format();
 
@@ -300,15 +360,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
       }
       return true;
     });
-    pass_graphics.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
-      if (value) {
-        value->float32[0] = 1.0f;
-        value->float32[1] = 0.0f;
-        value->float32[2] = 1.0f;
-        value->float32[3] = 1.0f;
-      }
-      return true;
-    });
+    pass_graphics.set_get_clear_color(get_black_clear_color);
 
     pass_graphics.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
       {
@@ -324,30 +376,81 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
         Renderer::RendererOptionFlags opt = 0;
         renderer_.flush(cmd, context_, opt);
       }
-      return;
-      CommandBufferUtil::setup_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "shaders://depth.frag");
-      // CommandBufferUtil::setup_fullscreen_quad(
-      //   cmd, "builtin://shaders/quad.vert",
-      //   "assets://shaders/additive.frag");
-      cmd.set_blend_enable(true);
-      cmd.set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
-
-      auto &device_data = global_data_.device_data;
-      cmd.set_storage_buffer(0, 0, *device_data.bvh_nodes_buffer);
-      cmd.set_storage_buffer(0, 1, *device_data.bvh_vtx_buffer);
-      cmd.set_storage_buffer(0, 2, *device_data.bvh_faces_buffer);
-      cmd.set_storage_buffer(0, 4, *device_data.view_data_buffer);
-      {
-        DebugVars debug_vars = {}; // TODO
-        cmd.push_constants(&debug_vars, 0, sizeof(debug_vars));
-      }
-
-      CommandBufferUtil::draw_fullscreen_quad(cmd, 80);
     });
 
     scene_loader_.get_scene().add_render_pass_dependencies(graph_, pass_graphics);
 
-    graph_.set_backbuffer_source("back");
+    // Path tracing pass
+
+    AttachmentInfo path_trace_out;
+    // TODO: add HDR support
+    // path_trace_out.format = VK_FORMAT_R8G8B8A8_UNORM;
+    // path_trace_out.size_class = SizeClass::SwapchainRelative;
+    // path_trace_out.size_x = 1.0f;
+    // path_trace_out.size_y = 1.0f;
+
+    // TODO: transform into async compute job
+    // auto &path_trace_pass = graph_.add_pass("path_trace", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+    // auto &path_trace_rt = path_trace_pass.add_storage_texture_output("path_trace_out", path_trace_out);
+    // ===
+    auto &path_trace_pass = graph_.add_pass("path_trace", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+    path_trace_pass.add_color_output("path_trace_out", path_trace_out);
+    path_trace_pass.set_get_clear_color(get_black_clear_color);
+    path_trace_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+      // For i = 1..N
+      {
+        // Seed new camera rays (using some heuristic) and concatenate them to pending rays
+        // Perform ray-scene intersection and check ray termination
+        //  - either because of hit sky or russian roulette
+        // Accumulate radiance of terminated rays
+        // Allocate new ray count for each non-terminated ray using the material at intersection
+        // Perform sum-scan of counts to obtain output indices for rays
+        // Evaluate materials and write new ray directions to the allocated ray slots uning MIS
+        //  - also next event estimation
+        //  - also participating media at some point
+        //  - radiance accumulated so far should be stored in the ray data structure (?)
+      }
+
+      // Hack: debug ray casting shader
+      {
+        CommandBufferUtil::setup_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "shaders://depth.frag");
+        // BVH
+        {
+          cmd.set_storage_buffer(BVH_SET_BINDING, 1, *global_data_.device_data.bvh_nodes_buffer);
+          cmd.set_storage_buffer(BVH_SET_BINDING, 2, *global_data_.device_data.bvh_vtx_buffer);
+          cmd.set_storage_buffer(BVH_SET_BINDING, 3, *global_data_.device_data.bvh_faces_buffer);
+
+          // cmd.set_storage_buffer(BVH_SET_BINDING, 1, *test_mesh_->vbo_position);
+          // cmd.set_storage_buffer(BVH_SET_BINDING, 2, *test_mesh_->ibo);
+        }
+
+        // Camera
+        {
+          context_.set_camera(cam_.get_projection(), cam_.get_view());
+          renderer_.bind_global_parameters(cmd, context_);
+        }
+
+        // Debug
+        {
+          DebugVars debug_vars = {}; // TODO
+          debug_vars.debug_var_float_1 = 0;
+          debug_vars.debug_var_float_2 = 1;
+          debug_vars.debug_var_scale = 1;
+          // cmd.push_constants(&debug_vars, 0, sizeof(debug_vars));
+        }
+        // Draw
+        CommandBufferUtil::draw_fullscreen_quad(cmd, 1);
+        // TODO: transform into async compute job
+        // cmd.set_storage_texture(0, 0, graph_.get_physical_texture_resource(path_trace_rt));
+        // cmd.dispatch(1280 / 8, 720 / 8, 40);
+        // ===
+      }
+    });
+
+    // Graph baking
+
+    // graph_.set_backbuffer_source("back");
+    graph_.set_backbuffer_source("path_trace_out");
     graph_.bake();
     graph_.log();
   }
@@ -392,7 +495,8 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 
   RenderGraph graph_;
   GlobalData global_data_;
-  std::vector<bvh::bbox> bvh_;
+  BvhData bvh_;
+  ImportedMesh *test_mesh_;
 
   FPSCamera cam_;
   LightingParameters lighting_;
@@ -416,15 +520,12 @@ Application *application_create(int argc, char **argv) {
 
   // Register filesystem protocols.
 
-#define CACHE_DIRECTORY "cache"
   Global::filesystem()->register_protocol(
     "cache", std::unique_ptr<FilesystemBackend>(new OSFilesystem(CACHE_DIRECTORY)));
 
-#define BUILTIN_DIRECTORY "third_party/granite/assets"
   Global::filesystem()->register_protocol(
     "builtin", std::unique_ptr<FilesystemBackend>(new OSFilesystem(BUILTIN_DIRECTORY)));
 
-#define ASSET_DIRECTORY "third_party/granite/tests/assets"
 #ifdef ASSET_DIRECTORY
   const char *asset_dir = getenv("ASSET_DIRECTORY");
   if (!asset_dir)

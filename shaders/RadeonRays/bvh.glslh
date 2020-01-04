@@ -24,6 +24,8 @@
 #define BVH_SET_BINDING 0
 #endif
 
+#define HAVE_SHAPE_INFO 0
+
 struct bbox
 {
     vec4 pmin;
@@ -60,13 +62,13 @@ struct Face
     int idx0;
     int idx1;
     int idx2;
-    int shapeidx;
-    // Primitive ID
-    int id;
-    // Idx count
-    int cnt;
-
-    ivec2 padding;
+//    int shapeidx;
+//    // Primitive ID
+//    int id;
+//    // Idx count
+//    int cnt;
+//
+//    ivec2 padding;
 };
 
 struct Intersection
@@ -78,23 +80,24 @@ struct Intersection
     vec4 uvwt;
 };
 
-layout( std140, set = BVH_SET_BINDING, binding = 0 ) buffer restrict readonly NodesBlock
+layout( std430, set = BVH_SET_BINDING, binding = 1 ) buffer restrict readonly NodesBlock
 {
     bbox Nodes[];
 };
 
-layout( std140, set = BVH_SET_BINDING, binding = 1 ) buffer restrict readonly VerticesBlock
+layout( std430, set = BVH_SET_BINDING, binding = 2 ) buffer restrict readonly VerticesBlock
 {
-    vec4 Vertices[];
+    float Vertices[];
 };
 
-layout( std140, set = BVH_SET_BINDING, binding = 2 ) buffer restrict readonly FacesBlock
+layout( std430, set = BVH_SET_BINDING, binding = 3 ) buffer restrict readonly FacesBlock
 {
-    Face Faces[];
+    //Face Faces[];
+    int Indices[];
 };
 
 #if HAVE_SHAPE_INFO
-layout( std140, set = BVH_SET_BINDING, binding = 3 ) buffer restrict readonly ShapesBlock
+layout( std140, set = BVH_SET_BINDING, binding = 4 ) buffer restrict readonly ShapesBlock
 {
     ShapeData Shapes[];
 };
@@ -201,16 +204,28 @@ bool IntersectTriangleP( in ray r, in vec3 v1, in vec3 v2, in vec3 v3 )
     }
 }
 
+vec3 get_vertex(int index) {
+    // TODO: this might not be the most optimal way to fetch position data.
+    return vec3(
+        Vertices[3*index+0],
+        Vertices[3*index+1],
+        Vertices[3*index+2]
+    );
+}
+
 void IntersectLeafClosest( in BvhNode node, in ray r, inout Intersection isect )
 {
     vec3 v1, v2, v3;
     Face face;
 
     int start = STARTIDX(node);
-    face = Faces[start];
-    v1 = Vertices[face.idx0].xyz;
-    v2 = Vertices[face.idx1].xyz;
-    v3 = Vertices[face.idx2].xyz;
+    //face = Faces[start];
+    //v1 = get_vertex(face.idx0);
+    //v2 = get_vertex(face.idx1);
+    //v3 = get_vertex(face.idx2);
+    v1 = get_vertex(Indices[3*start+0]);
+    v2 = get_vertex(Indices[3*start+1]);
+    v3 = get_vertex(Indices[3*start+2]);
 
     //int shapemask = getShapeMask(face.shapeidx);
 
@@ -218,8 +233,10 @@ void IntersectLeafClosest( in BvhNode node, in ray r, inout Intersection isect )
     {
         if (IntersectTriangle(r, v1, v2, v3, isect))
         {
-                    isect.primid = face.id;
-                    isect.shapeid = getShapeId(face.shapeidx);
+                    //isect.primid = face.id;
+                    //isect.shapeid = getShapeId(face.shapeidx);
+                    isect.primid = 0;
+                    isect.shapeid = 0;
         }
     }
 }
@@ -230,10 +247,13 @@ bool IntersectLeafAny( in BvhNode node, in ray r )
     Face face;
 
     int start = STARTIDX(node);
-    face = Faces[start];
-    v1 = Vertices[face.idx0].xyz;
-    v2 = Vertices[face.idx1].xyz;
-    v3 = Vertices[face.idx2].xyz;
+    //face = Faces[start];
+    //v1 = get_vertex(face.idx0);
+    //v2 = get_vertex(face.idx1);
+    //v3 = get_vertex(face.idx2);
+    v1 = get_vertex(Indices[3*start+0]);
+    v2 = get_vertex(Indices[3*start+1]);
+    v3 = get_vertex(Indices[3*start+2]);
 
     //int shapemask = getShapeMask(face.shapeidx);
 

@@ -9,6 +9,7 @@ cc_binary(
         ":bvh",
         # ":camera",
         "//:granite",
+        "//:shaders_config",
         "@tinyobjloader",
         "@volk",
     ],
