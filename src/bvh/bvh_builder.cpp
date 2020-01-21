@@ -47,10 +47,19 @@ std::unique_ptr<Bvh> make_bvh(const BvhOptions &options) {
   }
 }
 
-std::vector<bbox> build_osbvh(gsl::span<bbox> leaf_bounds, const BvhOptions &options) {
+std::vector<bbox> build_bvh(gsl::span<bbox> leaf_bounds, const BvhOptions &options) {
+  // Scale up bounds a bit to avoid cracks when tracing rays against the scene.
+  // TODO: move this into bvh->Build to avoid this additional copy.
+  std::vector<bbox> scaled_leafs(leaf_bounds.begin(), leaf_bounds.end());
+  for (auto &leaf : scaled_leafs) {
+    constexpr float kBoundsScale = 1 + 1e-4f;
+    const auto center = leaf.center();
+    leaf.pmin = center + (leaf.pmin - center) * kBoundsScale;
+    leaf.pmax = center + (leaf.pmax - center) * kBoundsScale;
+  }
   // Build BVH in tree-like representation.
   auto bvh = make_bvh(options);
-  bvh->Build(leaf_bounds.data(), leaf_bounds.size());
+  bvh->Build(scaled_leafs.data(), scaled_leafs.size());
   // bvh->PrintStatistics(std::cout);
 
   // Translate to linear skip-links representation.
@@ -59,8 +68,8 @@ std::vector<bbox> build_osbvh(gsl::span<bbox> leaf_bounds, const BvhOptions &opt
 
   // Copy out the linearized nodes.
   std::vector<bbox> res;
-  res.reserve(translator.nodes_.size());
-  for (const auto &translator_node : translator.nodes_) {
+  res.reserve(translator.getNodes().size());
+  for (const auto &translator_node : translator.getNodes()) {
     res.push_back(translator_node.bounds);
   }
   return res;

@@ -98,7 +98,7 @@ class BvhBuilder {
   /// @param world World contaning geometry from which to build/update the bvh.
   void updateBvh(const World &world);
 
-  int getNodeCount() const { return m_translator.nodecnt_; }
+  int getNodeCount() const { return m_translator.getNodes().size(); }
   size_t getNodeBufferSizeBytes() const { return getNodeCount() * sizeof(Node); }
   int getVertexCount() const { return m_numvertices; }
   size_t getVertexBufferSizeBytes() const { return getVertexCount() * sizeof(Vertex); }

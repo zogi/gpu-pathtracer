@@ -33,7 +33,7 @@ using BvhOptions = RadeonRays::Options;
 //       node that has a next neighbor, or 0xFFFFFFFF for the root node
 // Non-leaf nodes are immediately followed by their first child in the node array.
 
-// Build an object-space skip-links BVH with the supplied leaf bounding boxes.
-std::vector<bbox> build_osbvh(gsl::span<bbox> leaf_bounds, const BvhOptions &options);
+// Build an skip-links BVH with the supplied leaf bounding boxes.
+std::vector<bbox> build_bvh(gsl::span<bbox> leaf_bounds, const BvhOptions &options);
 
 } // namespace bvh

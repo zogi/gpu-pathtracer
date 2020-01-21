@@ -30,23 +30,21 @@ THE SOFTWARE.
 #include <algorithm>
 
 namespace {
-  constexpr float kBoundsGrowthEps = 1e-4f;
+constexpr float kBoundsGrowthEps = 1e-4f;
 
-  void scaleBounds(RadeonRays::bbox& bounds, float scale)
-  {
-    const auto center = bounds.center();
-    bounds.pmin = center + (bounds.pmin - center) * scale;
-    bounds.pmax = center + (bounds.pmax - center) * scale;
-  }
+void scaleBounds(RadeonRays::bbox &bounds, float scale) {
+  const auto center = bounds.center();
+  bounds.pmin = center + (bounds.pmin - center) * scale;
+  bounds.pmax = center + (bounds.pmax - center) * scale;
 }
+} // namespace
 
 // Preferred work group size for Radeon devices
 static int const kWorkGroupSize = 64;
 
 namespace RadeonRays {
 
-void BvhBuilder::updateBvh(const World &world)
-{
+void BvhBuilder::updateBvh(const World &world) {
   const int numshapes = (int)world.shapes_.size();
   int numvertices = 0;
   int numfaces = 0;
@@ -127,7 +125,7 @@ void BvhBuilder::updateBvh(const World &world)
 
     for (int j = 0; j < mesh->num_faces(); ++j) {
       // Here we directly get world space bounds
-      auto& box = bounds[m_mesh_faces_start_idx[i] + j];
+      auto &box = bounds[m_mesh_faces_start_idx[i] + j];
       mesh->GetFaceBounds(j, false, box);
       scaleBounds(box, 1 + kBoundsGrowthEps);
     }
@@ -147,7 +145,7 @@ void BvhBuilder::updateBvh(const World &world)
     for (int j = 0; j < mesh->num_faces(); ++j) {
       bbox tmp;
       mesh->GetFaceBounds(j, true, tmp);
-      auto& box = bounds[m_mesh_faces_start_idx[i] + j];
+      auto &box = bounds[m_mesh_faces_start_idx[i] + j];
       box = transform_bbox(tmp, m);
       scaleBounds(box, 1 + kBoundsGrowthEps);
     }
@@ -168,8 +166,7 @@ void BvhBuilder::updateBvh(const World &world)
 }
 
 
-void BvhBuilder::fillBuffers(gsl::span<Node> out_nodes, gsl::span<float3> out_vertices, gsl::span<Face> out_faces)
-{
+void BvhBuilder::fillBuffers(gsl::span<Node> out_nodes, gsl::span<float3> out_vertices, gsl::span<Face> out_faces) {
   assert(out_nodes.size() == getNodeCount());
   assert(out_vertices.size() == getVertexCount());
   assert(out_faces.size() == getFaceCount());
@@ -178,7 +175,8 @@ void BvhBuilder::fillBuffers(gsl::span<Node> out_nodes, gsl::span<float3> out_ve
   const int numinstances = m_numinstances;
 
   // Copy nodes to output.
-  std::copy(m_translator.nodes_.cbegin(), m_translator.nodes_.cend(), out_nodes.begin());
+  auto &nodes = m_translator.getNodes();
+  std::copy(nodes.cbegin(), nodes.cend(), out_nodes.begin());
 
   // Transform and write vertices to output.
   {

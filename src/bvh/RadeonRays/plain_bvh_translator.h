@@ -40,10 +40,18 @@ class PlainBvhTranslator {
   // Constructor
   PlainBvhTranslator() = default;
 
+  struct PrimitiveRange {
+    int first;
+    int count;
+  };
+
   // Plain BVH node
   struct Node {
     // Node's bounding box
     bbox bounds;
+    // If leafnode: the indices of primitives contained in this node
+    // If internal node: {-1, -1}
+    PrimitiveRange primitives;
   };
 
   void Flush();
@@ -51,15 +59,18 @@ class PlainBvhTranslator {
   void Process(Bvh const **bvhs, int const *offsets, int numbvhs);
   void UpdateTopLevel(Bvh const &bvh);
 
+  const std::vector<Node> &getNodes() const { return nodes_; }
+
+ private:
   std::vector<Node> nodes_;
-  std::vector<int> extra_;
+  // std::vector<int> extra_;
   std::vector<int> roots_;
   int nodecnt_ = 0;
   int root_ = 0;
 
  private:
   int ProcessNode(Bvh::Node const *node);
-  int ProcessNode(Bvh::Node const *n, int offset);
+  // int ProcessNode(Bvh::Node const *n, int offset);
 
   PlainBvhTranslator(PlainBvhTranslator const &) = delete;
   PlainBvhTranslator &operator=(PlainBvhTranslator const &) = delete;

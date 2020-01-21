@@ -216,7 +216,7 @@ vec3 get_vertex(int index) {
 void IntersectLeafClosest( in BvhNode node, in ray r, inout Intersection isect )
 {
     vec3 v1, v2, v3;
-    Face face;
+    //Face face;
 
     int start = STARTIDX(node);
     //face = Faces[start];
@@ -235,7 +235,7 @@ void IntersectLeafClosest( in BvhNode node, in ray r, inout Intersection isect )
         {
                     //isect.primid = face.id;
                     //isect.shapeid = getShapeId(face.shapeidx);
-                    isect.primid = 0;
+                    isect.primid = int(node.pmin.w);
                     isect.shapeid = 0;
         }
     }
@@ -268,7 +268,7 @@ bool IntersectLeafAny( in BvhNode node, in ray r )
     return false;
 }
 
-// intersect Ray against the whole BVH structure
+// r.o.w: max distance
 bool IntersectSceneAny( in ray r )
 {
     vec3 invdir  = vec3(1.f, 1.f, 1.f)/r.d.xyz;
@@ -307,6 +307,7 @@ bool IntersectSceneAny( in ray r )
     return false;
 }
 
+// r.o.w: max distance
 void IntersectSceneClosest( in ray r, inout Intersection isect)
 {
     const vec3 invdir  = vec3(1.f, 1.f, 1.f)/r.d.xyz;

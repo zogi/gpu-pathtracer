@@ -2,6 +2,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include <unordered_map>
+
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -110,7 +112,7 @@ struct BvhData {
   std::vector<int> bvh_idx;
 };
 
-void build_mesh_osbvh(const SceneFormats::Mesh &mesh, BvhData &out_bvh) {
+void build_mesh_bvh(const SceneFormats::Mesh &mesh, BvhData &out_bvh) {
   int index_stride = 0;
   if (mesh.index_type == VK_INDEX_TYPE_UINT16) {
     index_stride = 2;
@@ -172,7 +174,7 @@ void build_mesh_osbvh(const SceneFormats::Mesh &mesh, BvhData &out_bvh) {
 
   bvh::BvhOptions options;
   options.SetValue("bvh.builder", "sah");
-  nodes = bvh::build_osbvh(leafs, options);
+  nodes = bvh::build_bvh(leafs, options);
 }
 
 void init_device_data(Device &device, DeviceData &device_data, BvhData &bvh) {
@@ -260,17 +262,18 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
     // Load scene.
     // scene_loader_.load_scene(scene_path);
     // HACK: use test scene
-    // const std::string kTestScene = "../assets/lucy/lucy_watertight.glb";
-    const std::string kTestScene = "../assets/icosahedron.glb";
+    const std::string kTestScene = "../assets/lucy/lucy_watertight.glb";
+    // const std::string kTestScene = "../assets/icosahedron.glb";
+    // const std::string kTestScene = "../assets/test.glb";
     scene_loader_.load_scene(kTestScene);
     {
       auto &transform = scene_loader_.get_scene().get_root_node()->transform;
       // Lucy
       // transform.translation = vec3(0, -0.35, 0);
-      // transform.scale = vec3(0.008f);
+      // transform.scale = vec3(0.01f);
 
       // Icosahedron
-      transform.scale = vec3(0.3f);
+      // transform.scale = vec3(0.1f);
     }
 
     // Build BVH.
@@ -292,7 +295,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
       }
       assert(test_mesh_ != nullptr);
 
-      build_mesh_osbvh(test_mesh_->get_mesh(), bvh_);
+      build_mesh_bvh(test_mesh_->get_mesh(), bvh_);
     }
 
     // Set up real-time rendering context.
@@ -301,7 +304,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
     context_.set_lighting_parameters(&lighting_);
 
     cam_.set_depth_range(0.1f, 1000.0f);
-    cam_.look_at(vec3(-1.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 0.0f));
+    cam_.look_at(vec3(0.0f, 0.0f, -10.0f), vec3(0.0f, 0.0f, 0.0f));
     context_.set_camera(cam_);
   }
 
@@ -491,6 +494,31 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
     scene.bind_render_graph_resources(graph_);
     graph_.setup_attachments(device, &device.get_swapchain_view());
     graph_.enqueue_render_passes(device);
+  }
+
+  void readback_ssbo(void *data, size_t size, const Buffer &src) {
+    BufferCreateInfo info = {};
+    info.size = size;
+    info.domain = BufferDomain::CachedHost;
+    info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    auto buffer = get_wsi().get_device().create_buffer(info);
+
+    auto cmd = get_wsi().get_device().request_command_buffer();
+    cmd->barrier(
+      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+    cmd->copy_buffer(*buffer, src);
+    cmd->barrier(
+      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+      VK_ACCESS_HOST_READ_BIT);
+
+    Fence fence;
+    get_wsi().get_device().submit(cmd, &fence);
+    fence->wait();
+
+    auto *mapped = get_wsi().get_device().map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
+    memcpy(data, mapped, size);
+    get_wsi().get_device().unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
   }
 
   RenderGraph graph_;

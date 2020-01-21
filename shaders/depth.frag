@@ -76,28 +76,40 @@ void main() {
 
   //r.o.x += debug_vars.debug_var_cam_offset;
 
-  //outputColor = vec4(r.d.xyz, 1);
+  //outputColor = vec4(r.o.xyz, 1);
 
-#if 0
+  float scale = 1.0 / 20.0;
+  r.o.y += 2.0;
+  r.o /= scale;
+
+#if 1
   // Intersect with scene.
   Intersection isect;
+  //isect.uvwt = vec4(0);
   IntersectSceneClosest(r, isect);
   if (isect.shapeid == -1) {
     outputColor = vec4(0, 0, 0, 1);
   } else {
     //float x = smoothstep(isect.uvwt.w, debug_vars.debug_var_float_1, debug_vars.debug_var_float_2);
-    float x = smoothstep(isect.uvwt.w, 0.1, 2.0);
+    float x = isect.uvwt.w;
+    x *= scale;
+    x = smoothstep(x, 0.0, 3.0);
     //float x = isect.uvwt.w;
-    //x = 1;
-    outputColor = vec4(x, x, x, 1);
+    //float x = 1;
+    float r = mod(isect.primid, 3) + 0.05;
+    float g = mod(isect.primid / 3, 3) + 0.05;
+    float b = mod(isect.primid / 9, 3) + 0.05;
+    r = g = b = x;
+    outputColor = vec4(r, g, b, 1);
   }
 #endif
 
-#if 1
+#if 0
   // Debug BVH
   Intersection isect;
+  isect.uvwt.w = r.o.w;
   bool found = false;
-  for (int start = 0; start < 20; ++start) {
+  for (int start = 0; start < 1; ++start) {
     vec3 v1 = get_vertex(Indices[3*start+0]);
     vec3 v2 = get_vertex(Indices[3*start+1]);
     vec3 v3 = get_vertex(Indices[3*start+2]);
@@ -106,6 +118,18 @@ void main() {
     }
   }
   if (found) {
+    outputColor = vec4(1, 1, 1, 1);
+  } else {
+    outputColor = vec4(0, 0, 0, 0);
+  }
+#endif
+
+#if 0
+  Intersection isect;
+  vec3 v1 = vec3(-1, -1, 0);
+  vec3 v3 = vec3(1, -1, 0);
+  vec3 v2 = vec3(0, 1, 0);
+  if (IntersectTriangle(r, v1, v2, v3, isect)) {
     outputColor = vec4(1, 1, 1, 1);
   } else {
     outputColor = vec4(0, 0, 0, 0);
