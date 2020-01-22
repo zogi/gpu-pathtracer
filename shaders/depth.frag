@@ -44,10 +44,10 @@ void main() {
 #if 1
 
   // Construct ray in view space.
-  ray r;
+  Ray r;
 
-  r.extra.x = ~0; // shape mask
-  r.extra.y = 1;  // ray is active
+  //r.extra.x = ~0; // shape mask
+  //r.extra.y = 1;  // ray is active
 
   r.o.xyz = vec3(0, 0, 0);
   r.o.w = 1000.0; // max distance
@@ -96,9 +96,12 @@ void main() {
     x = smoothstep(x, 0.0, 3.0);
     //float x = isect.uvwt.w;
     //float x = 1;
-    float r = mod(isect.primid, 3) + 0.05;
-    float g = mod(isect.primid / 3, 3) + 0.05;
-    float b = mod(isect.primid / 9, 3) + 0.05;
+    float r = mod(isect.primid, 3) / 3.0;
+    r = mix(0.05, 0.95, r);
+    float g = mod(isect.primid / 3, 3) / 3.0;
+    g = mix(0.05, 0.95, g);
+    float b = mod(isect.primid / 9.0, 3) / 3.0;
+    b = mix(0.05, 0.95, b);
     r = g = b = x;
     outputColor = vec4(r, g, b, 1);
   }
@@ -107,13 +110,14 @@ void main() {
 #if 0
   // Debug BVH
   Intersection isect;
-  isect.uvwt.w = r.o.w;
   bool found = false;
-  for (int start = 0; start < 1; ++start) {
+  RayInternal ri = precomputeRay(r);
+  for (int start = 0; start < 20; ++start) {
     vec3 v1 = get_vertex(Indices[3*start+0]);
     vec3 v2 = get_vertex(Indices[3*start+1]);
     vec3 v3 = get_vertex(Indices[3*start+2]);
-    if (IntersectTriangle(r, v1, v2, v3, isect)) {
+    isect.uvwt.w = r.o.w;
+    if (IntersectTriangleWatertight(ri, v1, v2, v3, isect)) {
       found = true;
     }
   }
