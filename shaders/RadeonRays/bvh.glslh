@@ -240,16 +240,15 @@ bool IntersectTriangleWatertight( in RayInternal r, in vec3 v0, in vec3 v1, in v
 
     // Fall back to double precision test at triangle edges.
     if (e0 == 0.0 || e1 == 0.0 || e2 == 0.0) {
-        return false;
-        //double p2xp1y = double(p2.x) * double(p1.y);
-        //double p2yp1x = double(p2.y) * double(p1.x);
-        //e0 = float(p2yp1x - p2xp1y);
-        //double p0xp2y = double(p0.x) * double(p2.y);
-        //double p0yp2x = double(p0.y) * double(p2.x);
-        //e1 = float(p0yp2x - p0xp2y);
-        //double p1xp0y = double(p1.x) * double(p0.y);
-        //double p1yp0x = double(p1.y) * double(p0.x);
-        //e2 = float(p1yp0x - p1xp0y);
+        double p2xp1y = double(p2.x) * double(p1.y);
+        double p2yp1x = double(p2.y) * double(p1.x);
+        e0 = float(p2yp1x - p2xp1y);
+        double p0xp2y = double(p0.x) * double(p2.y);
+        double p0yp2x = double(p0.y) * double(p2.x);
+        e1 = float(p0yp2x - p0xp2y);
+        double p1xp0y = double(p1.x) * double(p0.y);
+        double p1yp0x = double(p1.y) * double(p0.x);
+        e2 = float(p1yp0x - p1xp0y);
     }
 
     // Perform triangle edge and determinant tests.
